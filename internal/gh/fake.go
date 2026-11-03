@@ -11,8 +11,19 @@ type Fake struct {
 	next  int
 	PRs   map[int]*FakePR
 	Calls []string
+	// Reviews records every posted review/comment, in order.
+	Reviews []FakeReview
 	// FailOn makes the named method return an error once (for idempotency tests).
 	FailOn map[string]bool
+}
+
+// FakeReview is one posted review. Kind is "review" or, after the primary
+// path failed, "comment".
+type FakeReview struct {
+	Repo string
+	N    int
+	Kind string
+	Body string
 }
 
 type FakePR struct {
@@ -106,6 +117,27 @@ func (f *Fake) Ready(repo string, n int) error {
 	}
 	p.IsDraft = false
 	f.Calls = append(f.Calls, fmt.Sprintf("ready #%d", n))
+	return nil
+}
+
+// Review mimics Exec.Review: FailOn["Review"] makes the comment-review path
+// fail once (so the plain-comment fallback is used); FailOn["Comment"] makes
+// the fallback fail once too.
+func (f *Fake) Review(repo string, n int, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, err := f.get(n); err != nil {
+		return err
+	}
+	kind := "review"
+	if err := f.fail("Review"); err != nil {
+		if err := f.fail("Comment"); err != nil {
+			return err
+		}
+		kind = "comment"
+	}
+	f.Reviews = append(f.Reviews, FakeReview{Repo: repo, N: n, Kind: kind, Body: body})
+	f.Calls = append(f.Calls, fmt.Sprintf("%s #%d", kind, n))
 	return nil
 }
 
