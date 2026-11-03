@@ -336,6 +336,25 @@ Read-only, live-updating over the same SSE stream (a page re-fetches when an eve
 - **Path parameters:** `{repo}` and `{name}` must be safe directory names and load as an initiative; `{id}` must equal the id of one of its loaded PRs. Anything else is a 404. Files are read only through paths of the loaded initiative.
 - **Untrusted markdown:** specs, notes and log entries are rendered in the browser only through `DOMPurify.sanitize(marked.parse(...))` (pinned versions from cdn.jsdelivr.net, with SRI). Every other field is inserted as text, never as HTML.
 
+### Archived initiatives
+
+Teardown (§8) moves a finished initiative to `<repo>/_archive/<dir>/`. The board browses these read-only, with no SSE and no write routes. Older teardowns left a single `_archive/<dir>.md` (PLAN plus LOG), and those open too.
+
+- **Index:** below the active list, an "Archived" section lists every `_archive/<dir>/` that has a loadable `PLAN.md` and every legacy `_archive/*.md`, across all repos, newest first by the date prefix of the directory name. `GET /api/archives` returns `[{key, initiative, repo, dir, prs, legacy}]`. It is a sibling of `/api/initiatives`, which keeps its array shape. Teardown removes the initiative from the active list in the same step, so the existing `*` event refreshes the index.
+
+| Route | Serves |
+|---|---|
+| `GET /a/{repo}/{name}/` | archived board (`/a/{repo}/{name}` redirects here) |
+| `GET /a/{repo}/{name}/pr/{id}/` | archived PR detail |
+| `GET /a/{repo}/{name}/log/` | archived log |
+| `GET /a/{repo}/legacy/{file}` | legacy `.md` archive, rendered as sanitized markdown |
+| `GET /api/a/{repo}/{name}`, `.../pr/{id}`, `.../log` | the same JSON as `/api/i/...` |
+| `GET /api/legacy/{repo}/{file}` | `{key, initiative, repo, dir, file, body}`; frontmatter stripped |
+
+- **Read-only pages:** `PageOpts.ReadOnly` hides the live indicator and opens no `EventSource`. The slot bar and "next" list are not shown. Links stay under `/a/{repo}/{name}/`.
+- **Validation:** same rules as the active routes, rooted at `_archive`. `{repo}` and `{name}` must be safe directory names, and the archive must be a real directory (not a symlink) that loads as an initiative; `{id}` must equal a loaded PR's id. `{file}` must equal the name of a regular `*.md` file found by listing `_archive`. Anything else is a 404. Active initiatives are not served under `/a/`, nor archived ones under `/i/`.
+- **Untrusted content:** archived markdown goes through the same `DOMPurify.sanitize(marked.parse(...))` path as live content, and Mermaid runs with `securityLevel: "strict"`.
+
 ---
 
 ## 11. Agent definitions (written after the CLI)
