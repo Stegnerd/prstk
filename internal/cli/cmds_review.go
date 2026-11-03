@@ -105,7 +105,7 @@ func cmdReview(a *App, o reviewOpts) error {
 			return fmt.Errorf("posting review to #%d failed (nothing recorded): %w", p.PRNumber, err)
 		}
 	}
-	return a.mutate(func(in *plan.Initiative) (string, error) {
+	err = a.mutate(func(in *plan.Initiative) (string, error) {
 		p := in.PR(o.id)
 		if p == nil {
 			return "", fmt.Errorf("no PR %q", o.id)
@@ -132,4 +132,8 @@ func cmdReview(a *App, o reviewOpts) error {
 		}
 		return fmt.Sprintf("review %s round %d · %s · %s", o.id, round, o.verdict, where), nil
 	})
+	if err != nil && post {
+		return fmt.Errorf("review was posted to #%d but not recorded locally: %w (re-run with --no-post to record it without posting again)", posted, err)
+	}
+	return err
 }
