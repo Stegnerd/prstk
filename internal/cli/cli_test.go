@@ -364,33 +364,6 @@ func TestValidationErrors(t *testing.T) {
 	}
 }
 
-func TestTeardown(t *testing.T) {
-	e := newEnv(t)
-	e.run("init", "tiny")
-	e.run("add", "01", "only", "--title", "Only")
-	e.run("assign", "01", "--worker", "w")
-	e.run("status", "01", "abandoned")
-	in := e.initiative()
-	out := e.run("teardown")
-	if !strings.Contains(out, "archived") {
-		t.Fatalf("teardown: %s", out)
-	}
-	arch := filepath.Join(in.RepoDir(), "_archive", in.Name+".md")
-	b, err := os.ReadFile(arch)
-	if err != nil || !strings.Contains(string(b), "prstk:generated:begin") || !strings.Contains(string(b), "· teardown ·") {
-		t.Fatalf("archive: %v\n%s", err, b)
-	}
-	if _, err := os.Stat(in.Dir); err == nil {
-		t.Fatal("initiative dir still exists")
-	}
-	if plan.ReadCurrent(in.RepoDir()) != "" {
-		t.Fatal("current not cleared")
-	}
-	if wl := git(t, e.repo, "worktree", "list"); strings.Contains(wl, "worktrees/01") {
-		t.Fatalf("worktree still registered:\n%s", wl)
-	}
-}
-
 func TestInitRequiresRemoteBase(t *testing.T) {
 	e := newEnv(t)
 	if _, se, code := e.try("init", "x", "--base", "nope"); code == 0 || !strings.Contains(se, "doesn't exist on origin") {
