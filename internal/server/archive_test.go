@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"prstk/internal/cli"
-	"prstk/internal/gh"
-	"prstk/internal/plan"
-	"prstk/internal/render"
-	"prstk/internal/server"
+	"github.com/Stegnerd/prstk/internal/cli"
+	"github.com/Stegnerd/prstk/internal/gh"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/server"
 )
 
 const (

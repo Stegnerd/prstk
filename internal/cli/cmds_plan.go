@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 var (

@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 type Server struct {

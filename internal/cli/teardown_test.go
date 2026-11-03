@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 // teardownSetup creates an initiative with two PRs that each have a worktree

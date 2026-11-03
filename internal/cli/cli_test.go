@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"prstk/internal/gh"
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/gh"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 type env struct {
