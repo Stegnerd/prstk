@@ -1,0 +1,123 @@
+// Package gh wraps the GitHub CLI behind an interface so tests can fake it.
+package gh
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
+type PRInfo struct {
+	Number   int    `json:"number"`
+	State    string `json:"state"` // OPEN, CLOSED, MERGED
+	MergedAt string `json:"mergedAt"`
+	IsDraft  bool   `json:"isDraft"`
+	Body     string `json:"body"`
+	BaseRef  string `json:"baseRefName"`
+}
+
+type CreateArgs struct {
+	Base, Head, Title, Body string
+	Draft                   bool
+}
+
+// Client is the subset of gh that prstk needs. repo is "owner/name".
+type Client interface {
+	FindOpenPR(repo, head string) (int, error) // 0 if none
+	CreatePR(repo string, a CreateArgs) (int, error)
+	View(repo string, n int) (PRInfo, error)
+	EditBody(repo string, n int, body string) error
+	EditBase(repo string, n int, base string) error
+	Ready(repo string, n int) error
+	AuthStatus() error
+}
+
+type Logger func(format string, args ...any)
+
+// Exec runs the real gh binary.
+type Exec struct{ Log Logger }
+
+func (e Exec) run(stdin string, args ...string) (string, error) {
+	cmd := exec.Command("gh", args...)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	if e.Log != nil {
+		e.Log("gh %s → err=%v\n%s%s", strings.Join(args, " "), err, out.String(), errb.String())
+	}
+	if err != nil {
+		return "", fmt.Errorf("gh %s: %v: %s", args[0]+" "+args[1], err, strings.TrimSpace(errb.String()))
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func (e Exec) FindOpenPR(repo, head string) (int, error) {
+	out, err := e.run("", "pr", "list", "-R", repo, "--head", head, "--state", "open", "--json", "number", "--limit", "1")
+	if err != nil {
+		return 0, err
+	}
+	var prs []struct{ Number int }
+	if err := json.Unmarshal([]byte(out), &prs); err != nil {
+		return 0, err
+	}
+	if len(prs) == 0 {
+		return 0, nil
+	}
+	return prs[0].Number, nil
+}
+
+func (e Exec) CreatePR(repo string, a CreateArgs) (int, error) {
+	args := []string{"pr", "create", "-R", repo, "--base", a.Base, "--head", a.Head, "--title", a.Title, "--body-file", "-"}
+	if a.Draft {
+		args = append(args, "--draft")
+	}
+	out, err := e.run(a.Body, args...)
+	if err != nil {
+		return 0, err
+	}
+	// prints the PR URL: https://github.com/o/r/pull/123
+	lines := strings.Split(out, "\n")
+	url := lines[len(lines)-1]
+	i := strings.LastIndex(url, "/")
+	n, err := strconv.Atoi(url[i+1:])
+	if err != nil {
+		return 0, fmt.Errorf("can't parse PR number from %q", url)
+	}
+	return n, nil
+}
+
+func (e Exec) View(repo string, n int) (PRInfo, error) {
+	var info PRInfo
+	out, err := e.run("", "pr", "view", strconv.Itoa(n), "-R", repo, "--json", "number,state,mergedAt,isDraft,body,baseRefName")
+	if err != nil {
+		return info, err
+	}
+	err = json.Unmarshal([]byte(out), &info)
+	return info, err
+}
+
+func (e Exec) EditBody(repo string, n int, body string) error {
+	_, err := e.run(body, "pr", "edit", strconv.Itoa(n), "-R", repo, "--body-file", "-")
+	return err
+}
+
+func (e Exec) EditBase(repo string, n int, base string) error {
+	_, err := e.run("", "pr", "edit", strconv.Itoa(n), "-R", repo, "--base", base)
+	return err
+}
+
+func (e Exec) Ready(repo string, n int) error {
+	_, err := e.run("", "pr", "ready", strconv.Itoa(n), "-R", repo)
+	return err
+}
+
+func (e Exec) AuthStatus() error {
+	_, err := e.run("", "auth", "status")
+	return err
+}

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{if .Static}}<meta http-equiv="refresh" content="10">{{end}}
+<title>{{.Title}}</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #2563eb; --warn: #b45309; --bad: #b91c1c; --good: #15803d;
+  --chip: #eef2ff; --chip-ink: #3730a3; --lane: #fbfbfc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --panel: #171a21; --ink: #e5e7eb; --muted: #9ca3af; --line: #2a2f3a;
+    --accent: #60a5fa; --warn: #fbbf24; --bad: #f87171; --good: #4ade80;
+    --chip: #1e2340; --chip-ink: #c7d2fe; --lane: #13161c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 13px/1.4 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif; }
+header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); background: var(--panel);
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+header h1 { font-size: 16px; margin: 0; }
+header .meta { color: var(--muted); }
+header a { color: var(--accent); text-decoration: none; }
+main { padding: 12px 16px 40px; }
+.slots { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.slot { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.slot.idle { color: var(--muted); }
+.next { color: var(--muted); align-self: center; }
+.issues { margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.issues .error { color: var(--bad); } .issues .warning { color: var(--warn); }
+.board-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.board { display: grid; min-width: 960px; }
+.colhead { position: sticky; top: 0; padding: 8px 10px; font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--line);
+  background: var(--panel); }
+.lanelabel { grid-column: 1 / -1; padding: 6px 10px 2px; font-size: 11px; color: var(--muted);
+  border-top: 1px solid var(--line); background: var(--lane); }
+.lanelabel:first-of-type { border-top: 0; }
+.cell { padding: 6px; min-height: 40px; background: var(--lane); }
+.cell + .cell { border-left: 1px dashed var(--line); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px;
+  margin-bottom: 6px; box-shadow: 0 1px 1px rgba(0,0,0,.03); }
+.card .top { display: flex; gap: 6px; align-items: baseline; }
+.card .id { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+.card .title { font-weight: 500; }
+.card .sub { color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
+.card a { color: var(--accent); text-decoration: none; }
+.badge { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 999px; line-height: 16px;
+  background: var(--chip); color: var(--chip-ink); }
+.badge.blocked { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); cursor: help; }
+.badge.tag { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge.next { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+section.tree { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; }
+section.tree h2, .index h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.index ul { list-style: none; padding: 0; margin: 0; }
+.index li { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
+.index a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.empty { color: var(--muted); padding: 20px; }
+#conn { margin-left: auto; font-size: 11px; color: var(--muted); }
+#conn.live::before { content: "● "; color: var(--good); }
+#conn.down::before { content: "● "; color: var(--bad); }
+</style>
+</head>
+<body>
+<header><h1 id="title">{{.Title}}</h1><span class="meta" id="meta"></span><span id="conn"></span></header>
+<main id="main"><div class="empty">Loading…</div></main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+window.PRSTK = {{.Config}};
+(function () {
+  const C = window.PRSTK;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  if (window.mermaid) mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+
+  function ago(iso) {
+    if (!iso || iso.startsWith("0001")) return "?";
+    let s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+    if (s < 60) return Math.floor(s) + "s";
+    if (s < 3600) return Math.floor(s / 60) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h" + String(Math.floor(s / 60) % 60).padStart(2, "0") + "m";
+    return Math.floor(s / 86400) + "d" + Math.floor(s / 3600) % 24 + "h";
+  }
+
+  let lastMermaid = "", lastData = null, mermaidSeq = 0;
+
+  function card(c, next) {
+    const pr = c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">#${c.pr_number}</a>` : "";
+    const badges = [
+      c.opus ? `<span class="badge">Opus</span>` : "",
+      c.blocked ? `<span class="badge blocked" title="${esc(c.reason)}">blocked</span>` : "",
+      c.tag && !c.blocked ? `<span class="badge tag" title="${esc(c.reason)}">${esc(c.tag)}</span>` : "",
+      next.includes(c.id) ? `<span class="badge next">next</span>` : "",
+    ].join("");
+    return `<div class="card"><div class="top"><span class="id">${esc(c.id)}</span><span class="title">${esc(c.title)}</span></div>
+      <div class="sub">${pr}<span>↑ ${esc(c.parent || "base")}</span>${c.worker ? `<span>${esc(c.worker)}</span>` : ""}<span data-since="${esc(c.since)}">${ago(c.since)}</span>${badges}</div></div>`;
+  }
+
+  function render(d) {
+    lastData = d;
+    document.title = `${d.initiative} · prstk`;
+    $("#title").textContent = d.initiative;
+    $("#meta").innerHTML = `${esc(d.repo)} · base <b>${esc(d.base)}</b> · ${esc(d.dir)}` + (C.static ? "" : ` · <a href="/">all initiatives</a>`);
+
+    const slots = [];
+    for (let i = 0; i < d.max_workers; i++) {
+      const s = d.slots[i];
+      slots.push(s
+        ? `<span class="slot">Slot ${i + 1}: ${esc(s.worker || "?")} → ${esc(s.pr)} (${esc(s.status)}, <span data-since="${esc(s.since)}">${ago(s.since)}</span>)</span>`
+        : `<span class="slot idle">Slot ${i + 1}: idle</span>`);
+    }
+    for (let i = d.max_workers; i < d.slots.length; i++) {
+      const s = d.slots[i];
+      slots.push(`<span class="slot" style="color:var(--bad)">over limit: ${esc(s.worker)} → ${esc(s.pr)}</span>`);
+    }
+    if (d.next.length) slots.push(`<span class="next">next: ${d.next.map(esc).join(", ")}</span>`);
+
+    const issues = d.issues.length
+      ? `<div class="issues">${d.issues.map((i) => `<div class="${i.error ? "error" : "warning"}">${i.error ? "error" : "warning"}${i.pr ? " " + esc(i.pr) : ""}: ${esc(i.msg)}</div>`).join("")}</div>` : "";
+
+    const cols = d.columns.length;
+    let grid = `<div class="board" style="grid-template-columns: repeat(${cols}, minmax(150px, 1fr))">`;
+    grid += d.columns.map((c) => `<div class="colhead">${esc(c)}</div>`).join("");
+    if (!d.lanes.length) grid += `<div class="lanelabel">no PRs yet — prstk add</div>`;
+    for (const lane of d.lanes) {
+      grid += `<div class="lanelabel">${esc(lane.label)}</div>`;
+      for (const col of d.columns) {
+        grid += `<div class="cell">${lane.cards.filter((c) => c.column === col).map((c) => card(c, d.next)).join("")}</div>`;
+      }
+    }
+    grid += `</div>`;
+
+    let main = $("#main");
+    let tree = $("#tree");
+    const scroll = [window.scrollX, window.scrollY];
+    const keepTree = tree && d.mermaid === lastMermaid;
+    const treeNode = keepTree ? tree : null;
+    main.innerHTML = `<div class="slots">${slots.join("")}</div>${issues}<div class="board-wrap">${grid}</div>
+      <section class="tree"><h2>Stack tree</h2><div id="tree-slot"></div></section>`;
+    if (treeNode) {
+      $("#tree-slot").replaceWith(treeNode);
+    } else {
+      const div = document.createElement("div");
+      div.id = "tree";
+      $("#tree-slot").replaceWith(div);
+      lastMermaid = d.mermaid;
+      if (window.mermaid) {
+        mermaid.render("m" + ++mermaidSeq, d.mermaid).then(({ svg }) => (div.innerHTML = svg))
+          .catch((e) => (div.innerHTML = `<pre>${esc(d.mermaid)}</pre>`));
+      } else {
+        div.innerHTML = `<pre>${esc(d.mermaid)}</pre>`;
+      }
+    }
+    window.scrollTo(scroll[0], scroll[1]);
+  }
+
+  function renderIndex(list) {
+    $("#title").textContent = "prstk boards";
+    $("#meta").textContent = list.length + " active initiative" + (list.length === 1 ? "" : "s");
+    $("#main").innerHTML = `<div class="index"><h2>Active initiatives</h2>` + (list.length
+      ? `<ul>${list.map((i) => `<li><a href="/i/${esc(i.key)}/">${esc(i.initiative)}</a> <span class="meta">${esc(i.repo)} · ${esc(i.dir)} · ${i.prs} PRs · ${i.slots}/${i.max_workers} slots</span></li>`).join("")}</ul>`
+      : `<div class="empty">No active initiatives under ~/.pr-plans.</div>`) + `</div>`;
+  }
+
+  async function load() {
+    if (C.static) return render(C.data);
+    const r = await fetch(C.api, { cache: "no-store" });
+    if (!r.ok) { $("#main").innerHTML = `<div class="empty">${esc(await r.text())}</div>`; return; }
+    const d = await r.json();
+    C.index ? renderIndex(d) : render(d);
+  }
+
+  load();
+  setInterval(() => document.querySelectorAll("[data-since]").forEach((el) => (el.textContent = ago(el.dataset.since))), 15000);
+
+  if (!C.static && C.events) {
+    const conn = $("#conn");
+    const es = new EventSource(C.events);
+    es.onopen = () => { conn.className = "live"; conn.textContent = "live"; };
+    es.onerror = () => { conn.className = "down"; conn.textContent = "disconnected — retrying"; };
+    es.onmessage = (e) => {
+      const key = e.data;
+      if (C.index || !lastData || key === lastData.key || key === "*") load();
+    };
+  }
+})();
+</script>
+</body>
+</html>
