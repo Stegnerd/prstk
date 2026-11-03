@@ -101,6 +101,31 @@ func (a *App) rootCmd() *cobra.Command {
 		return cmdMerged(a, args[0])
 	})
 
+	// ---- director records ----
+	var logFile string
+	logCmd := &cobra.Command{
+		Use:   "log <type> [message...]",
+		Short: "Append a timestamped director entry (review, feedback or replan) to LOG.md",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: run(func(args []string) error {
+			return cmdLog(a, args[0], args[1:], logFile)
+		}),
+	}
+	logCmd.Flags().StringVar(&logFile, "file", "", "read the (multi-line) message from `path`")
+	root.AddCommand(logCmd)
+
+	var rv reviewOpts
+	c = cmd("review <id>", "Post a review to the PR, record it as a numbered round, and log it", 1, func(args []string) error {
+		rv.id = args[0]
+		return cmdReview(a, rv)
+	})
+	c.Flags().StringVar(&rv.file, "file", "", "review text `path` (required)")
+	c.Flags().StringVar(&rv.verdict, "verdict", "", "approved or changes-requested (required)")
+	c.Flags().StringVar(&rv.summary, "summary", "", "one-line LOG summary (default: first line of the file)")
+	c.Flags().BoolVar(&rv.noPost, "no-post", false, "record locally without posting to GitHub")
+	c.MarkFlagRequired("file")
+	c.MarkFlagRequired("verdict")
+
 	// ---- board / maintenance ----
 	var serve bool
 	var port int
