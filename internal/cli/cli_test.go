@@ -244,7 +244,7 @@ func TestPilotLifecycle(t *testing.T) {
 	e.work("03", "api/read.go", "package api\n")
 	e.work("04", "db/db.go", "package db\n\n// types change\n") // will conflict
 
-	// Dalton feedback on 02 → fix worker → new commit → propagate.
+	// Human feedback on 02 → fix worker → new commit → propagate.
 	e.run("status", "02", "fix-pending", "--reason", "rename table")
 	if out := e.run("next"); out != "none · no free slots (2/2 used)" {
 		t.Fatalf("next with full slots: %q", out)
