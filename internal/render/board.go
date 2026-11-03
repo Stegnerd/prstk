@@ -85,6 +85,17 @@ func column(in *plan.Initiative, p *plan.Spec) (col, tag string) {
 	return "", ""
 }
 
+func buildCard(in *plan.Initiative, p *plan.Spec) Card {
+	col, tag := column(in, p)
+	c := Card{ID: p.ID, Title: p.Title, Parent: p.Parent, Status: DisplayStatus(in, p), Column: col, Tag: tag,
+		PRNumber: p.PRNumber, Opus: p.Model == "opus", Blocked: p.Status == plan.Blocked,
+		Reason: p.BlockedReason, Worker: p.Worker, Since: p.StatusSince}
+	if p.PRNumber > 0 {
+		c.URL = fmt.Sprintf("https://github.com/%s/pull/%d", in.Meta.Repo, p.PRNumber)
+	}
+	return c
+}
+
 func BuildBoard(in *plan.Initiative, now time.Time) Board {
 	b := Board{
 		Key: in.RepoKey + "/" + in.Name, Initiative: in.Meta.Initiative, Dir: in.Name,
@@ -104,16 +115,7 @@ func BuildBoard(in *plan.Initiative, now time.Time) Board {
 	for _, c := range cands {
 		b.Next = append(b.Next, c.ID)
 	}
-	card := func(p *plan.Spec) Card {
-		col, tag := column(in, p)
-		c := Card{ID: p.ID, Title: p.Title, Parent: p.Parent, Status: DisplayStatus(in, p), Column: col, Tag: tag,
-			PRNumber: p.PRNumber, Opus: p.Model == "opus", Blocked: p.Status == plan.Blocked,
-			Reason: p.BlockedReason, Worker: p.Worker, Since: p.StatusSince}
-		if p.PRNumber > 0 {
-			c.URL = fmt.Sprintf("https://github.com/%s/pull/%d", in.Meta.Repo, p.PRNumber)
-		}
-		return c
-	}
+	card := func(p *plan.Spec) Card { return buildCard(in, p) }
 	shown := map[string]bool{}
 	for i, path := range in.Paths() {
 		var lane Lane
@@ -157,6 +159,13 @@ var boardTmpl string
 
 var tmpl = template.Must(template.New("board").Parse(boardTmpl))
 
+// Page views (PageOpts.View).
+const (
+	ViewBoard = ""    // initiative board (or the index when IndexJS)
+	ViewPR    = "pr"  // PR detail page; API serves PRDetail
+	ViewLog   = "log" // initiative log page; API serves []LogEntry
+)
+
 // BoardPage renders a board page. For the static fallback pass data (it is
 // inlined and the page meta-refreshes); for live mode pass api/events URLs.
 type PageOpts struct {
@@ -166,10 +175,26 @@ type PageOpts struct {
 	API     string // live: JSON endpoint
 	Events  string // live: SSE endpoint
 	IndexJS bool   // live index page
+
+	View string // ViewBoard, ViewPR or ViewLog
+	// Key is the initiative key "<repoKey>/<dir>". SSE events carrying this
+	// key (or "*") make the PR and log pages re-fetch.
+	Key string
+	// Base is the initiative board's URL path, ending in "/" (for example
+	// "/i/<repo>/<name>/"). PR links are Base+"pr/<id>/", the log is
+	// Base+"log/". Empty means no detail links (the static board.html).
+	Base string
+	// ReadOnly hides the live indicator and never opens the EventSource
+	// (archived initiatives).
+	ReadOnly bool
 }
 
 func BoardPage(o PageOpts) ([]byte, error) {
-	cfg := map[string]any{"static": o.Static, "api": o.API, "events": o.Events, "index": o.IndexJS}
+	cfg := map[string]any{"static": o.Static, "api": o.API, "events": o.Events, "index": o.IndexJS,
+		"view": o.View, "key": o.Key, "base": o.Base, "readonly": o.ReadOnly}
+	if o.ReadOnly {
+		cfg["events"] = ""
+	}
 	if o.Data != nil {
 		cfg["data"] = o.Data
 	}
