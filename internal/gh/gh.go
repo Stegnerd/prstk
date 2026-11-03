@@ -128,6 +128,7 @@ func (e Exec) Review(repo string, n int, body string) error {
 	if _, err := e.run(body, "pr", "review", num, "-R", repo, "--comment", "--body-file", "-"); err == nil {
 		return nil
 	}
+	// Falls back on any error, so it can double-post if the review actually landed.
 	_, err := e.run(body, "pr", "comment", num, "-R", repo, "--body-file", "-")
 	return err
 }
