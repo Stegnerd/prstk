@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/gh"
-	"prstk/internal/gitx"
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/gh"
+	"github.com/Stegnerd/prstk/internal/gitx"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 type App struct {

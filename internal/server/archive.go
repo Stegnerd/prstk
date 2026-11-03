@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 // Archived initiatives (read-only). Teardown moves a finished initiative to

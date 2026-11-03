@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 func pilot(t *testing.T) *plan.Initiative {

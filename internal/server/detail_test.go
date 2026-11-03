@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 func detailServer(t *testing.T) (*httptest.Server, string, string) {

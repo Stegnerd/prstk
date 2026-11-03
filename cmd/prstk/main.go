@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"prstk/internal/cli"
+	"github.com/Stegnerd/prstk/internal/cli"
 )
 
 func main() {

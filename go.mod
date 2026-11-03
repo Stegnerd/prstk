@@ -1,4 +1,4 @@
-module prstk
+module github.com/Stegnerd/prstk
 
 go 1.27.3
 
