@@ -106,7 +106,7 @@ func TestReviewRounds(t *testing.T) {
 		t.Fatalf("frontmatter changed:\n%s", frontmatter(got))
 	}
 	if !strings.Contains(got, "## Review: Director\n\n### Round 1 (2026-11-03): changes requested\n\n#### Review\n\nTests are missing") ||
-		!strings.Contains(got, "### Round 2 (2026-11-03): approved\n\nAll findings addressed.\n\n## Review: Dalton") {
+		!strings.Contains(got, "### Round 2 (2026-11-03): approved\n\nAll findings addressed.\n\n## Review: Human") {
 		t.Fatalf("spec body:\n%s", got)
 	}
 	log := e.readFile(e.initiative().LogPath())
@@ -119,13 +119,13 @@ func TestReviewRounds(t *testing.T) {
 	}
 }
 
-func TestReviewNumberingWithoutDaltonSection(t *testing.T) {
+func TestReviewNumberingWithoutHumanSection(t *testing.T) {
 	e := openedPR(t)
 	spec := e.initiative().PR("01").SpecPath()
 	s := e.readFile(spec)
-	i := strings.Index(s, "## Review: Dalton")
+	i := strings.Index(s, "## Review: Human")
 	if i < 0 {
-		t.Fatalf("expected a Dalton section in:\n%s", s)
+		t.Fatalf("expected a human review section in:\n%s", s)
 	}
 	os.WriteFile(spec, []byte(strings.TrimRight(s[:i], "\n")+"\n"), 0o644)
 
@@ -141,18 +141,49 @@ func TestReviewNumberingWithoutDaltonSection(t *testing.T) {
 	}
 }
 
-func TestReviewNumberingWithDaltonSection(t *testing.T) {
-	e := openedPR(t)
-	spec := e.initiative().PR("01").SpecPath()
-	s := e.readFile(spec) + "\n### Round 1 (2026-11-02)\n\nverbatim feedback\n"
-	os.WriteFile(spec, []byte(s), 0o644)
-	f := e.writeTemp("r.md", "ok\n")
-	if out := e.run("review", "01", "--file", f, "--verdict", "approved"); !strings.Contains(out, "round 1") {
-		t.Fatalf("Dalton's rounds must not count: %s", out)
+// The human section's own rounds must not count, whatever the reviewer is
+// called. "Dalton" is the legacy hard-coded name: back-compat fixture.
+func TestReviewNumberingWithHumanSection(t *testing.T) {
+	for _, name := range []string{"Human", "Dalton", "Ada"} {
+		t.Run(name, func(t *testing.T) {
+			e := openedPR(t)
+			spec := e.initiative().PR("01").SpecPath()
+			s := strings.Replace(e.readFile(spec), "## Review: Human", "## Review: "+name, 1) +
+				"\n### Round 1 (2026-11-02)\n\nverbatim feedback\n"
+			os.WriteFile(spec, []byte(s), 0o644)
+			f := e.writeTemp("r.md", "ok\n")
+			if out := e.run("review", "01", "--file", f, "--verdict", "approved"); !strings.Contains(out, "round 1") {
+				t.Fatalf("the reviewer's rounds must not count: %s", out)
+			}
+			got := e.readFile(spec)
+			if !strings.Contains(got, "### Round 1 (2026-11-03): approved\n\nok\n\n## Review: "+name+"\n\n### Round 1 (2026-11-02)\n\nverbatim feedback\n") {
+				t.Fatalf("spec:\n%s", got)
+			}
+		})
 	}
-	got := e.readFile(spec)
-	if !strings.Contains(got, "### Round 1 (2026-11-03): approved\n\nok\n\n## Review: Dalton\n\n### Round 1 (2026-11-02)\n\nverbatim feedback\n") {
-		t.Fatalf("spec:\n%s", got)
+}
+
+func TestAddWritesReviewerHeading(t *testing.T) {
+	// default: no config.yaml
+	e := newEnv(t)
+	e.run("init", "vis")
+	e.run("add", "01", "scaffold", "--title", "Scaffold")
+	got := e.readFile(e.initiative().PR("01").SpecPath())
+	if !strings.HasSuffix(got, "## Review: Director\n\n## Review: Human\n") {
+		t.Fatalf("default spec:\n%s", got)
+	}
+
+	// configured reviewer
+	e = newEnv(t)
+	e.run("init", "vis")
+	cfg := filepath.Join(e.home, "dalton-sample_proj", "config.yaml")
+	if err := os.WriteFile(cfg, []byte("reviewer: Ada\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.run("add", "01", "scaffold", "--title", "Scaffold")
+	got = e.readFile(e.initiative().PR("01").SpecPath())
+	if !strings.HasSuffix(got, "## Review: Director\n\n## Review: Ada\n") || strings.Contains(got, "Human") {
+		t.Fatalf("configured spec:\n%s", got)
 	}
 }
 
