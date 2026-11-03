@@ -78,12 +78,12 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 |---|---|---|
 | `PLAN.md` hand-written sections | Director | All |
 | `PLAN.md` generated block | `prstk` | All |
-| `LOG.md` | `prstk` (mechanical entries) + director (decision entries) | Dalton, director |
+| `LOG.md` | `prstk` (mechanical entries, and the director's decision entries via `prstk log` / `prstk review`) | Dalton, director |
 | `prs/*/spec.md` frontmatter | `prstk` (and director at creation via `prstk add`) | All |
-| `prs/*/spec.md` body | Director | Worker, director |
+| `prs/*/spec.md` body | Director (`### Round N` items inside `## Review: Director` are written by `prstk review`) | Worker, director |
 | `prs/*/notes.md` | Assigned worker only | Director, downstream workers |
 
-No two writers share a file region. `prstk` only ever touches frontmatter and marker-delimited generated blocks.
+No two writers share a file region. `prstk` touches frontmatter and marker-delimited generated blocks, and appends `### Round N` items as the last item in `## Review: Director` (via `prstk review`) and entries to the end of `LOG.md`. It never edits anything else in a spec body.
 
 ### `PLAN.md`
 
@@ -117,7 +117,7 @@ Split 02 into 02a/02b. Auth turned out to be its own concern; 03 now stacks on 0
 ```
 
 Entry types: `init`, `add`, `assign`, `open`, `review`, `feedback`, `ready`, `propagate`, `merged`, `replan`, `blocked`, `teardown`.
-`prstk` writes mechanical entries as one line. The director writes `review`, `feedback`, and `replan` entries with reasoning.
+`prstk` writes mechanical entries as one line. The director's `review`, `feedback`, and `replan` entries (with reasoning, possibly multi-line) are also written by `prstk`, through `prstk review` and `prstk log`, so the timestamp is always real and the author is `director`.
 
 ### `prs/<id>-<slug>/spec.md`
 
@@ -253,6 +253,8 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 | `prstk open <id>` | Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. |
 | `prstk status <id> <status> [--reason "…"]` | Generic transition for statuses without a dedicated command. Validates transition legality. `blocked` requires `--reason`. |
 | `prstk ready <id>` | `gh pr ready`, sets `awaiting-you`, clears `worker`. |
+| `prstk review <id> --file <path> --verdict approved\|changes-requested [--summary "…"] [--no-post]` | If the PR is open (`pr_number > 0`) and not `--no-post`, posts the file as a comment review (`gh pr review --comment -R <repo>`, falling back to `gh pr comment`). Then appends `### Round N (date): <verdict>` to `## Review: Director` (suffixed ` (before PR opened)` when there's no PR) and a `review` LOG entry. Takes the lock for the writes; if both gh paths fail, writes nothing and exits 1. Does not change status. |
+| `prstk log <review\|feedback\|replan> [message…] [--file <path>]` | Appends a timestamped `director` entry to LOG.md. The message is the args or a (multi-line) file, not both. |
 | `prstk propagate <id>` | For each descendant in parent-first order: requires clean worktree, runs `git merge --no-ff <parent-branch>` in the child's worktree. Clean merge → push. Conflict → `git merge --abort`, set child `fix-pending` with reason listing conflicted files, skip that child's subtree, continue with others. Prints summary. |
 | `prstk merged <id>` | Verifies via `gh pr view --json state,mergedAt`. Sets `merged`. For each child: `gh pr edit <child> --base <base_branch>`. Updates stack nav. Removes the merged PR's worktree (refuses if dirty). |
 | `prstk board [--serve] [--port 7777]` | Without `--serve`: writes `board.html`. With `--serve`: live board (§10). |

@@ -32,6 +32,9 @@ type Client interface {
 	EditBody(repo string, n int, body string) error
 	EditBase(repo string, n int, base string) error
 	Ready(repo string, n int) error
+	// Review posts body as a comment review on PR n, falling back to a plain
+	// PR comment if the review is refused (e.g. reviewing your own PR).
+	Review(repo string, n int, body string) error
 	AuthStatus() error
 }
 
@@ -114,6 +117,19 @@ func (e Exec) EditBase(repo string, n int, base string) error {
 
 func (e Exec) Ready(repo string, n int) error {
 	_, err := e.run("", "pr", "ready", strconv.Itoa(n), "-R", repo)
+	return err
+}
+
+func (e Exec) Review(repo string, n int, body string) error {
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("review body is empty")
+	}
+	num := strconv.Itoa(n)
+	if _, err := e.run(body, "pr", "review", num, "-R", repo, "--comment", "--body-file", "-"); err == nil {
+		return nil
+	}
+	// Falls back on any error, so it can double-post if the review actually landed.
+	_, err := e.run(body, "pr", "comment", num, "-R", repo, "--body-file", "-")
 	return err
 }
 
