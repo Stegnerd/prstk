@@ -116,7 +116,7 @@ func TestMentions(t *testing.T) {
 func TestSplitSpecNoReviews(t *testing.T) {
 	body := "## Goal\n\nDo it.\n\n## Definition of done\n- tests\n"
 	got := SplitSpec(body)
-	if got.Spec != strings.TrimSpace(body) || got.Dalton != "" || got.DirectorRounds == nil || len(got.DirectorRounds) != 0 {
+	if got.Spec != strings.TrimSpace(body) || got.Reviewer != "" || got.ReviewerName != "" || got.DirectorRounds == nil || len(got.DirectorRounds) != 0 {
 		t.Fatalf("%#v", got)
 	}
 	b, _ := json.Marshal(got)
@@ -143,25 +143,57 @@ func TestSplitSpecRounds(t *testing.T) {
 	if r2.Heading != "Round 2" || r2.Body != "all good" {
 		t.Fatalf("r2: %#v", r2)
 	}
-	if got.Dalton != "Please rename X.\n\n### sub-heading stays in Dalton\nmore" {
-		t.Fatalf("dalton: %q", got.Dalton)
+	// "## Review: Dalton" is the legacy hard-coded name: back-compat fixture.
+	if got.Reviewer != "Please rename X.\n\n### sub-heading stays in Dalton\nmore" || got.ReviewerName != "Dalton" {
+		t.Fatalf("reviewer: %q (%q)", got.Reviewer, got.ReviewerName)
 	}
 }
 
-func TestSplitSpecOnlyDalton(t *testing.T) {
+func TestSplitSpecOnlyReviewer(t *testing.T) {
 	got := SplitSpec("## Goal\nG\n\n## Review: Dalton\n  feedback here  \n")
-	if got.Spec != "## Goal\nG" || got.Dalton != "feedback here" || len(got.DirectorRounds) != 0 {
+	if got.Spec != "## Goal\nG" || got.Reviewer != "feedback here" || got.ReviewerName != "Dalton" || len(got.DirectorRounds) != 0 {
 		t.Fatalf("%#v", got)
 	}
 	// an empty Director section (as `prstk add` writes it) yields no rounds
 	got = SplitSpec("## Goal\nG\n\n## Review: Director\n\n## Review: Dalton\n")
-	if got.Spec != "## Goal\nG" || got.Dalton != "" || len(got.DirectorRounds) != 0 {
+	if got.Spec != "## Goal\nG" || got.Reviewer != "" || got.ReviewerName != "Dalton" || len(got.DirectorRounds) != 0 {
 		t.Fatalf("empty sections: %#v", got)
 	}
 	// director text before the first ### is kept as an untitled round
 	got = SplitSpec("## Review: Director\nloose finding\n### R1\nx\n")
 	if len(got.DirectorRounds) != 2 || got.DirectorRounds[0] != (ReviewRound{Body: "loose finding"}) || got.DirectorRounds[1].Heading != "R1" {
 		t.Fatalf("preamble: %#v", got.DirectorRounds)
+	}
+}
+
+func TestSplitSpecReviewerNames(t *testing.T) {
+	// Dalton is the legacy hard-coded name: back-compat fixture.
+	for _, name := range []string{"Dalton", "Human", "Ada"} {
+		body := "## Goal\nG\n\n## Review: Director\n\n### Round 1\nfine\n\n## Review: " + name + "\n\nfeedback\n"
+		got := SplitSpec(body)
+		if got.Spec != "## Goal\nG" || got.Reviewer != "feedback" || got.ReviewerName != name ||
+			len(got.DirectorRounds) != 1 || got.DirectorRounds[0].Body != "fine" {
+			t.Errorf("%s: %#v", name, got)
+		}
+		// reviewer section before the director section
+		got = SplitSpec("## Goal\nG\n\n## Review: " + name + "\nfb\n\n## Review: Director\n### R1\nx\n")
+		if got.Reviewer != "fb" || got.ReviewerName != name || len(got.DirectorRounds) != 1 {
+			t.Errorf("%s reversed: %#v", name, got)
+		}
+	}
+	// fenced headings are ignored; the first reviewer heading wins
+	got := SplitSpec("## Goal\n```\n## Review: Ada\n```\n\n## Review: Bo\none\n\n## Review: Cy\ntwo\n")
+	if got.ReviewerName != "Bo" || got.Reviewer != "one\n\n## Review: Cy\ntwo" || !strings.Contains(got.Spec, "## Review: Ada") {
+		t.Errorf("fence/first-wins: %#v", got)
+	}
+	// a nameless heading is not a reviewer section
+	got = SplitSpec("## Goal\nG\n\n## Review:   \ntext\n")
+	if got.ReviewerName != "" || got.Reviewer != "" || !strings.Contains(got.Spec, "text") {
+		t.Errorf("blank name: %#v", got)
+	}
+	b, _ := json.Marshal(SplitSpec("## Review: Ada\nx\n"))
+	if !strings.Contains(string(b), `"reviewer":"x"`) || !strings.Contains(string(b), `"reviewer_name":"Ada"`) {
+		t.Errorf("json: %s", b)
 	}
 }
 

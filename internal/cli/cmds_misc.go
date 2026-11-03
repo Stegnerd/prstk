@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/plan"
-	"prstk/internal/server"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/server"
 )
 
 func cmdBoard(a *App, serve bool, port int) error {

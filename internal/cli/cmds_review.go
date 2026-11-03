@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 const timeFmt = "2006-01-02 15:04"

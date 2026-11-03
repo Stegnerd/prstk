@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 func pilot(t *testing.T) *plan.Initiative {
@@ -102,6 +102,26 @@ func TestBoardLanesAndColumns(t *testing.T) {
 	s := string(page)
 	if !strings.Contains(s, `http-equiv="refresh" content="10"`) || !strings.Contains(s, `"initiative":"pokemon-api"`) {
 		t.Fatal("static page missing refresh or data")
+	}
+}
+
+// The detail view's feedback label comes from spec.reviewer_name, never a
+// hard-coded person.
+func TestBoardReviewerLabel(t *testing.T) {
+	in := pilot(t)
+	b := BuildBoard(in, time.Now())
+	page, err := BoardPage(PageOpts{Title: "t", Static: true, Data: &b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(page)
+	for _, w := range []string{"d.spec.reviewer_name", "`${d.spec.reviewer_name}'s feedback`", `"Reviewer feedback"`, "md(d.spec.reviewer)"} {
+		if !strings.Contains(s, w) {
+			t.Errorf("board page missing %q", w)
+		}
+	}
+	if strings.Contains(s, "Dalton") || strings.Contains(s, "spec.dalton") {
+		t.Error("board page still mentions Dalton")
 	}
 }
 
