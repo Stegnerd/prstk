@@ -41,7 +41,10 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
     config.yaml                      # per-repo settings (optional)
     current                          # name of the active initiative (set by init/use)
     _archive/
-      2026-11-03-1415-pokemon-api.md # PLAN + LOG, written at teardown
+      2026-11-01-0900-older.md       # legacy single-file archive (pre-dir teardown; left as is)
+      2026-11-03-1415-pokemon-api/   # whole initiative dir, moved here at teardown
+        PLAN.md  LOG.md  board.html  # final; LOG ends with the teardown entry
+        prs/<id>-<slug>/spec.md, notes.md
     2026-11-03-1415-pokemon-api/     # one initiative
       PLAN.md
       LOG.md
@@ -63,6 +66,7 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 - Repo key is `<owner>-<repo>` from the `origin` remote URL, not the folder name.
 - Initiative dir name: `YYYY-MM-DD-HHMM-<slug>` (local time), so it sorts chronologically.
 - Worktrees live inside the initiative so teardown removes everything together.
+- At teardown the initiative dir is moved (one `rename`) to `_archive/<initiative>/`, minus `worktrees/`, `.lock` and `.prstk.log`. It stays loadable as an initiative. Legacy `_archive/<initiative>.md` files from older versions sit alongside and are never modified.
 
 ---
 
@@ -253,7 +257,7 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 | `prstk merged <id>` | Verifies via `gh pr view --json state,mergedAt`. Sets `merged`. For each child: `gh pr edit <child> --base <base_branch>`. Updates stack nav. Removes the merged PR's worktree (refuses if dirty). |
 | `prstk board [--serve] [--port 7777]` | Without `--serve`: writes `board.html`. With `--serve`: live board (§10). |
 | `prstk doctor` | Checks `git`, `gh` installed; `gh auth status`; base branch exists on remote; agent-teams flag set in env or `~/.claude/settings.json`. |
-| `prstk teardown` | Refuses unless every PR is `merged` or `abandoned` and every worktree is clean. Writes `_archive/<initiative>.md` (PLAN.md including final generated block, then LOG.md). Only after the archive write succeeds: removes worktrees, deletes the initiative dir, clears `current`. |
+| `prstk teardown` | Refuses unless every PR is `merged` or `abandoned` and every worktree is clean. Also refuses if `_archive/<initiative>` already exists (dir or file). Appends the teardown LOG entry, regenerates PLAN.md and board.html, removes the worktrees, deletes `.lock`, `.prstk.log` and the empty `worktrees/`, then moves the initiative dir to `_archive/<initiative>/` with a single rename and clears `current`. If any step fails the initiative stays where it was, and re-running teardown completes it. |
 
 ### Stack nav block (in every PR body)
 
