@@ -27,6 +27,7 @@ You start in the director's directory, **not** your worktree.
 - Commit in small, meaningful commits. **Push only your own branch**: `git push` (prstk set the upstream at assign/open). **Never** force-push, rebase, squash, amend pushed commits, or merge PRs.
 - Merge conflicts: when you're assigned to resolve one, run `git merge --no-ff <parent-branch>` in your worktree, resolve, run the tests, commit, and push. Never rebase.
 - prstk commands you may run: `prstk show <your-id>`, `prstk validate`, `prstk status <your-id> blocked --reason "…"`, and `prstk status <your-id> in-progress` (to unblock). Run them from your worktree. Nothing else.
+- Never run `go install`, `brew`, or anything else that replaces a tool on PATH. The director is running the `prstk` binary from PATH; if you smoke-test it, build to a temp path (`go build -o <tmp>/prstk ./cmd/prstk`) with a temp `PRSTK_HOME`. Never post to a real GitHub PR while testing; use a fake.
 - Stuck on something only the director or Dalton can decide? Run `prstk status <id> blocked --reason "<one line>"`, message the director with the detail, and unblock once answered.
 
 ## notes.md (your handoff)
@@ -44,4 +45,4 @@ Report "done" to the director **only** when every Definition-of-done item is met
 - Everything is committed and pushed (`git status` clean, nothing unpushed).
 - notes.md is filled in.
 
-Then stay available. The director reviews, and may send findings for you to fix in the same worktree. After `prstk ready` the director releases you; shut down when asked.
+Send **one** short done message to the director, and nothing more: no final summary that repeats it. Then stay available. The director reviews, and may send findings for you to fix in the same worktree. After `prstk ready` the director releases you; shut down when asked.
