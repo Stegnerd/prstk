@@ -8,7 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 // LogEntry is one LOG.md entry (§4 LOG.md).
@@ -105,29 +105,44 @@ type ReviewRound struct {
 type SpecParts struct {
 	Spec           string        `json:"spec"`            // body up to "## Review: Director"
 	DirectorRounds []ReviewRound `json:"director_rounds"` // each "### " under "## Review: Director"; never nil
-	Dalton         string        `json:"dalton"`          // everything under "## Review: Dalton", trimmed
+	Reviewer       string        `json:"reviewer"`        // body of the human review section, trimmed
+	ReviewerName   string        `json:"reviewer_name"`   // name from its heading, e.g. "Dalton"; "" if absent
 }
 
 const (
 	headDirector = "## Review: Director"
-	headDalton   = "## Review: Dalton"
+	headReview   = "## Review: "
 )
+
+// humanReviewName returns the name in a "## Review: <name>" heading that
+// starts the human section: non-empty and not "Director". Any name counts so
+// specs written under older reviewer names keep parsing.
+func humanReviewName(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimRight(line, " \t"), headReview)
+	if !ok {
+		return "", false
+	}
+	name := strings.TrimSpace(rest)
+	return name, name != "" && name != "Director"
+}
 
 // SplitSpec splits a spec body. Headings are recognised only at the start of
 // a line and outside fenced code blocks. Spec is everything before the first
-// review heading. The Director section runs to the Dalton heading (or the
-// end); the Dalton section runs to the Director heading (or the end), so
-// either order works. Text under "## Review: Director" before its first
-// "### " is kept as a round with an empty Heading rather than dropped.
+// review heading. The Director section runs to the human reviewer's heading
+// (or the end); the human section runs to the Director heading (or the end),
+// so either order works. The first "## Review: <name>" heading (any name but
+// Director) starts the human section; later ones are ordinary text. Text under
+// "## Review: Director" before its first "### " is kept as a round with an empty Heading rather than dropped.
 func SplitSpec(body string) SpecParts {
 	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
 	const (
 		inSpec = iota
 		inDirector
-		inDalton
+		inReviewer
 	)
 	sect := inSpec
-	var spec, dalton []string
+	var spec, reviewer []string
+	reviewerName, haveReviewer := "", false
 	rounds := []ReviewRound{}
 	var pre []string // director text before its first ###
 	var cur *ReviewRound
@@ -143,14 +158,14 @@ func SplitSpec(body string) SpecParts {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if fence == "" {
-			switch strings.TrimRight(line, " \t") {
-			case headDirector:
+			if strings.TrimRight(line, " \t") == headDirector {
 				endRound()
 				sect = inDirector
 				continue
-			case headDalton:
+			}
+			if name, ok := humanReviewName(line); ok && !haveReviewer {
 				endRound()
-				sect = inDalton
+				sect, reviewerName, haveReviewer = inReviewer, name, true
 				continue
 			}
 		}
@@ -164,8 +179,8 @@ func SplitSpec(body string) SpecParts {
 		switch sect {
 		case inSpec:
 			spec = append(spec, line)
-		case inDalton:
-			dalton = append(dalton, line)
+		case inReviewer:
+			reviewer = append(reviewer, line)
 		case inDirector:
 			if fence == "" && strings.HasPrefix(line, "### ") {
 				endRound()
@@ -186,7 +201,8 @@ func SplitSpec(body string) SpecParts {
 	return SpecParts{
 		Spec:           strings.TrimSpace(strings.Join(spec, "\n")),
 		DirectorRounds: rounds,
-		Dalton:         strings.TrimSpace(strings.Join(dalton, "\n")),
+		Reviewer:       strings.TrimSpace(strings.Join(reviewer, "\n")),
+		ReviewerName:   reviewerName,
 	}
 }
 

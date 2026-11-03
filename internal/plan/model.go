@@ -295,6 +295,18 @@ type Config struct {
 	DefaultBase string `yaml:"default_base"`
 	MaxWorkers  int    `yaml:"max_workers"`
 	Setup       string `yaml:"setup"`
+	Reviewer    string `yaml:"reviewer"` // human reviewer's name; "" means "Human"
+}
+
+// DefaultReviewer is the human reviewer's name when config.yaml sets none.
+const DefaultReviewer = "Human"
+
+// ReviewerName returns the trimmed Reviewer, or "Human" when it is blank.
+func (c Config) ReviewerName() string {
+	if n := strings.TrimSpace(c.Reviewer); n != "" {
+		return n
+	}
+	return DefaultReviewer
 }
 
 func LoadConfig(repoDir string) (Config, error) {

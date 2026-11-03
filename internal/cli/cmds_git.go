@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"prstk/internal/gh"
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/gh"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 // repoPath is where repo-level git commands run (worktree add/remove).

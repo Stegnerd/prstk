@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 func setup(t *testing.T) (home, dir string) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 var Columns = []string{"Planned", "Ready", "In Progress", "Director Review", "Awaiting You", "Merged"}

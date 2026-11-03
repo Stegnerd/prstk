@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/plan"
 )
 
 const (

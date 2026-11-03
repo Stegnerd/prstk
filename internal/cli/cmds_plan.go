@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"prstk/internal/plan"
-	"prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/render"
 )
 
 var (
@@ -19,6 +19,7 @@ var (
 	idRe   = regexp.MustCompile(`^[0-9A-Za-z]+$`)
 )
 
+// specSkeleton is the body of a new spec; %s is the human reviewer's name.
 const specSkeleton = `## Goal
 
 ## Scope
@@ -37,7 +38,7 @@ const specSkeleton = `## Goal
 
 ## Review: Director
 
-## Review: Dalton
+## Review: %s
 `
 
 const notesSkeleton = `## Description
@@ -226,7 +227,7 @@ func cmdAdd(a *App, o addOpts) error {
 				Status: plan.Planned, StatusSince: now, EarlyStart: o.earlyStart, Model: model,
 				Branch: fmt.Sprintf("prstk/%s/%s-%s", in.Meta.Initiative, id, slug), Dir: dir,
 			}
-			s.InitBody(specSkeleton)
+			s.InitBody(fmt.Sprintf(specSkeleton, in.Config.ReviewerName()))
 			if err := s.Save(); err != nil {
 				return "", err
 			}

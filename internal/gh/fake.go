@@ -143,7 +143,7 @@ func (f *Fake) Review(repo string, n int, body string) error {
 
 func (f *Fake) AuthStatus() error { return nil }
 
-// Merge simulates Dalton merging a PR.
+// Merge simulates the human reviewer merging a PR.
 func (f *Fake) Merge(n int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
