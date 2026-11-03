@@ -66,20 +66,98 @@ section.tree h2, .index h2 { font-size: 13px; margin: 0 0 8px; color: var(--mute
 #conn { margin-left: auto; font-size: 11px; color: var(--muted); }
 #conn.live::before { content: "● "; color: var(--good); }
 #conn.down::before { content: "● "; color: var(--bad); }
+.card.link { cursor: pointer; }
+.card.link:hover { border-color: var(--accent); }
+.card .id a { color: inherit; }
+.slot a { color: inherit; }
+.muted { color: var(--muted); }
+.detail, .log { max-width: 980px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0 0 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.facts a, .entry a.pr, .md a, .log a { color: var(--accent); text-decoration: none; }
+details.sec { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; }
+details.sec > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); }
+details.sec > .body { padding: 0 14px 12px; }
+.round { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 6px; }
+.round:first-child { border-top: 0; margin-top: 0; }
+.round h3 { font-size: 13px; margin: 4px 0; }
+.md { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.md h1, .md h2, .md h3, .md h4 { margin: 14px 0 6px; line-height: 1.25; }
+.md h1 { font-size: 17px; } .md h2 { font-size: 15px; } .md h3 { font-size: 13px; } .md h4 { font-size: 13px; color: var(--muted); }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 6px 0; }
+.md code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--lane); padding: 0 3px; border-radius: 3px; }
+.md pre, pre.raw { background: var(--lane); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: pre-wrap; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
+.md table { border-collapse: collapse; } .md th, .md td { border: 1px solid var(--line); padding: 3px 6px; }
+.entry { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; }
+.entry .ehead { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; }
+.entry .etime { font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+.entry .by { color: var(--muted); }
+.entry .md { margin-top: 2px; }
+.entry .md > :first-child { margin-top: 0; } .entry .md > :last-child { margin-bottom: 0; }
+.badge[data-type="review"], .badge[data-type="feedback"], .badge[data-type="replan"] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.badge[data-type="blocked"] { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.badge[data-type="merged"], .badge[data-type="ready"] { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+.filters select { font: inherit; }
 </style>
 </head>
 <body>
 <header><h1 id="title">{{.Title}}</h1><span class="meta" id="meta"></span><span id="conn"></span></header>
 <main id="main"><div class="empty">Loading…</div></main>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@18.1.1/lib/marked.umd.js" integrity="sha384-rATToyt6602Jnq8c7w8HZwmyOUgPL7mzxX01FBWoV48ns/EgkakGozpES+PnaYOI" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js" integrity="sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx" crossorigin="anonymous"></script>
 <script>
 window.PRSTK = {{.Config}};
 (function () {
+  // Security: every string from the API is untrusted (workers write specs,
+  // notes and log entries). Plain fields only ever reach the DOM as text
+  // nodes via h(); markdown only via md(), i.e. DOMPurify.sanitize(marked.parse()).
+  // The only other innerHTML sink is Mermaid's own SVG output.
   const C = window.PRSTK;
   const $ = (s) => document.querySelector(s);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   if (window.mermaid) mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+
+  // h builds an element. Strings in kids become text nodes; attrs are set
+  // with setAttribute (never parsed as HTML); "on*" attrs add listeners.
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, String(v));
+    }
+    for (const c of kids.flat(Infinity)) {
+      if (c == null || c === false || c === "") continue;
+      el.append(c instanceof Node ? c : String(c));
+    }
+    return el;
+  }
+
+  // md renders untrusted markdown. This is the only markdown-to-HTML path.
+  // Without the libraries (offline CDN) it falls back to plain text.
+  function md(text) {
+    const div = h("div", { class: "md" });
+    text = String(text ?? "");
+    if (!text.trim()) {
+      div.append(h("p", { class: "muted" }, "(empty)"));
+    } else if (window.marked && window.DOMPurify) {
+      div.innerHTML = DOMPurify.sanitize(marked.parse(text, { async: false }), { FORBID_TAGS: ["style", "form"], FORBID_ATTR: ["style"] });
+    } else {
+      div.append(h("pre", { class: "raw" }, text));
+    }
+    return div;
+  }
+
+  const prURL = (id) => C.base ? C.base + "pr/" + encodeURIComponent(id) + "/" : null;
+  const logURL = (q) => C.base ? C.base + "log/" + (q ? "?" + new URLSearchParams(q) : "") : null;
+  const prLink = (id, cls) => { const u = prURL(id); return u ? h("a", { href: u, class: cls }, id) : h("span", { class: cls }, id); };
 
   function ago(iso) {
     if (!iso || iso.startsWith("0001")) return "?";
@@ -89,106 +167,208 @@ window.PRSTK = {{.Config}};
     if (s < 86400) return Math.floor(s / 3600) + "h" + String(Math.floor(s / 60) % 60).padStart(2, "0") + "m";
     return Math.floor(s / 86400) + "d" + Math.floor(s / 3600) % 24 + "h";
   }
+  const since = (iso) => h("span", { "data-since": iso }, ago(iso));
+  const sep = (parts) => parts.filter(Boolean).flatMap((p, i) => (i ? [" · ", p] : [p]));
+
+  // keep re-renders in place: same scroll, same open/closed sections
+  function rerender(build) {
+    const scroll = [window.scrollX, window.scrollY];
+    const open = {};
+    document.querySelectorAll("details[data-sec]").forEach((d) => (open[d.dataset.sec] = d.open));
+    build();
+    document.querySelectorAll("details[data-sec]").forEach((d) => { if (d.dataset.sec in open) d.open = open[d.dataset.sec]; });
+    window.scrollTo(scroll[0], scroll[1]);
+  }
+
+  // ---- board ----
 
   let lastMermaid = "", lastData = null, mermaidSeq = 0;
 
   function card(c, next) {
-    const pr = c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">#${c.pr_number}</a>` : "";
-    const badges = [
-      c.opus ? `<span class="badge">Opus</span>` : "",
-      c.blocked ? `<span class="badge blocked" title="${esc(c.reason)}">blocked</span>` : "",
-      c.tag && !c.blocked ? `<span class="badge tag" title="${esc(c.reason)}">${esc(c.tag)}</span>` : "",
-      next.includes(c.id) ? `<span class="badge next">next</span>` : "",
-    ].join("");
-    return `<div class="card"><div class="top"><span class="id">${esc(c.id)}</span><span class="title">${esc(c.title)}</span></div>
-      <div class="sub">${pr}<span>↑ ${esc(c.parent || "base")}</span>${c.worker ? `<span>${esc(c.worker)}</span>` : ""}<span data-since="${esc(c.since)}">${ago(c.since)}</span>${badges}</div></div>`;
+    const url = prURL(c.id);
+    return h("div", {
+        class: url ? "card link" : "card",
+        onclick: url ? (e) => { if (!e.target.closest("a")) location.href = url; } : null,
+      },
+      h("div", { class: "top" }, h("span", { class: "id" }, prLink(c.id)), h("span", { class: "title" }, c.title)),
+      h("div", { class: "sub" },
+        c.url ? h("a", { href: c.url, target: "_blank", rel: "noopener" }, "#" + c.pr_number) : null,
+        h("span", null, "↑ " + (c.parent || "base")),
+        c.worker ? h("span", null, c.worker) : null,
+        since(c.since),
+        c.opus ? h("span", { class: "badge" }, "Opus") : null,
+        c.blocked ? h("span", { class: "badge blocked", title: c.reason }, "blocked") : null,
+        c.tag && !c.blocked ? h("span", { class: "badge tag", title: c.reason }, c.tag) : null,
+        next.includes(c.id) ? h("span", { class: "badge next" }, "next") : null));
   }
 
   function render(d) {
     lastData = d;
     document.title = `${d.initiative} · prstk`;
     $("#title").textContent = d.initiative;
-    $("#meta").innerHTML = `${esc(d.repo)} · base <b>${esc(d.base)}</b> · ${esc(d.dir)}` + (C.static ? "" : ` · <a href="/">all initiatives</a>`);
+    $("#meta").replaceChildren(...sep([d.repo, h("span", null, "base ", h("b", null, d.base)), d.dir,
+      C.base ? h("a", { href: logURL() }, "log") : null,
+      C.static ? null : h("a", { href: "/" }, "all initiatives")]));
 
     const slots = [];
     for (let i = 0; i < d.max_workers; i++) {
       const s = d.slots[i];
       slots.push(s
-        ? `<span class="slot">Slot ${i + 1}: ${esc(s.worker || "?")} → ${esc(s.pr)} (${esc(s.status)}, <span data-since="${esc(s.since)}">${ago(s.since)}</span>)</span>`
-        : `<span class="slot idle">Slot ${i + 1}: idle</span>`);
+        ? h("span", { class: "slot" }, `Slot ${i + 1}: ${s.worker || "?"} → `, prLink(s.pr), ` (${s.status}, `, since(s.since), ")")
+        : h("span", { class: "slot idle" }, `Slot ${i + 1}: idle`));
     }
     for (let i = d.max_workers; i < d.slots.length; i++) {
       const s = d.slots[i];
-      slots.push(`<span class="slot" style="color:var(--bad)">over limit: ${esc(s.worker)} → ${esc(s.pr)}</span>`);
+      slots.push(h("span", { class: "slot", style: "color:var(--bad)" }, `over limit: ${s.worker} → `, prLink(s.pr)));
     }
-    if (d.next.length) slots.push(`<span class="next">next: ${d.next.map(esc).join(", ")}</span>`);
+    if (d.next.length) slots.push(h("span", { class: "next" }, "next: ", d.next.flatMap((id, i) => (i ? [", ", prLink(id)] : [prLink(id)]))));
 
-    const issues = d.issues.length
-      ? `<div class="issues">${d.issues.map((i) => `<div class="${i.error ? "error" : "warning"}">${i.error ? "error" : "warning"}${i.pr ? " " + esc(i.pr) : ""}: ${esc(i.msg)}</div>`).join("")}</div>` : "";
+    const issues = d.issues.length ? h("div", { class: "issues" }, d.issues.map((i) =>
+      h("div", { class: i.error ? "error" : "warning" }, `${i.error ? "error" : "warning"}${i.pr ? " " + i.pr : ""}: ${i.msg}`))) : null;
 
-    const cols = d.columns.length;
-    let grid = `<div class="board" style="grid-template-columns: repeat(${cols}, minmax(150px, 1fr))">`;
-    grid += d.columns.map((c) => `<div class="colhead">${esc(c)}</div>`).join("");
-    if (!d.lanes.length) grid += `<div class="lanelabel">no PRs yet — prstk add</div>`;
-    for (const lane of d.lanes) {
-      grid += `<div class="lanelabel">${esc(lane.label)}</div>`;
-      for (const col of d.columns) {
-        grid += `<div class="cell">${lane.cards.filter((c) => c.column === col).map((c) => card(c, d.next)).join("")}</div>`;
-      }
-    }
-    grid += `</div>`;
+    const grid = h("div", { class: "board", style: `grid-template-columns: repeat(${d.columns.length | 0}, minmax(150px, 1fr))` },
+      d.columns.map((c) => h("div", { class: "colhead" }, c)),
+      d.lanes.length ? null : h("div", { class: "lanelabel" }, "no PRs yet — prstk add"),
+      d.lanes.map((lane) => [
+        h("div", { class: "lanelabel" }, lane.label),
+        d.columns.map((col) => h("div", { class: "cell" }, lane.cards.filter((c) => c.column === col).map((c) => card(c, d.next)))),
+      ]));
 
-    let main = $("#main");
-    let tree = $("#tree");
-    const scroll = [window.scrollX, window.scrollY];
-    const keepTree = tree && d.mermaid === lastMermaid;
-    const treeNode = keepTree ? tree : null;
-    main.innerHTML = `<div class="slots">${slots.join("")}</div>${issues}<div class="board-wrap">${grid}</div>
-      <section class="tree"><h2>Stack tree</h2><div id="tree-slot"></div></section>`;
-    if (treeNode) {
-      $("#tree-slot").replaceWith(treeNode);
-    } else {
-      const div = document.createElement("div");
-      div.id = "tree";
-      $("#tree-slot").replaceWith(div);
+    rerender(() => {
+      const tree = $("#tree");
+      const keep = tree && d.mermaid === lastMermaid ? tree : null;
+      const slot = h("div", { id: "tree-slot" });
+      $("#main").replaceChildren(h("div", { class: "slots" }, slots), issues || "", h("div", { class: "board-wrap" }, grid),
+        h("section", { class: "tree" }, h("h2", null, "Stack tree"), slot));
+      if (keep) return slot.replaceWith(keep);
+      const div = h("div", { id: "tree" });
+      slot.replaceWith(div);
       lastMermaid = d.mermaid;
+      const raw = () => div.replaceChildren(h("pre", null, d.mermaid));
       if (window.mermaid) {
-        mermaid.render("m" + ++mermaidSeq, d.mermaid).then(({ svg }) => (div.innerHTML = svg))
-          .catch((e) => (div.innerHTML = `<pre>${esc(d.mermaid)}</pre>`));
-      } else {
-        div.innerHTML = `<pre>${esc(d.mermaid)}</pre>`;
-      }
-    }
-    window.scrollTo(scroll[0], scroll[1]);
+        // Mermaid's SVG (securityLevel "strict" sanitizes labels).
+        mermaid.render("m" + ++mermaidSeq, d.mermaid).then(({ svg }) => (div.innerHTML = svg)).catch(raw);
+      } else raw();
+    });
   }
 
   function renderIndex(list) {
     $("#title").textContent = "prstk boards";
     $("#meta").textContent = list.length + " active initiative" + (list.length === 1 ? "" : "s");
-    $("#main").innerHTML = `<div class="index"><h2>Active initiatives</h2>` + (list.length
-      ? `<ul>${list.map((i) => `<li><a href="/i/${esc(i.key)}/">${esc(i.initiative)}</a> <span class="meta">${esc(i.repo)} · ${esc(i.dir)} · ${i.prs} PRs · ${i.slots}/${i.max_workers} slots</span></li>`).join("")}</ul>`
-      : `<div class="empty">No active initiatives under ~/.pr-plans.</div>`) + `</div>`;
+    $("#main").replaceChildren(h("div", { class: "index" }, h("h2", null, "Active initiatives"), list.length
+      ? h("ul", null, list.map((i) => h("li", null,
+          h("a", { href: "/i/" + i.key.split("/").map(encodeURIComponent).join("/") + "/" }, i.initiative), " ",
+          h("span", { class: "meta" }, `${i.repo} · ${i.dir} · ${i.prs} PRs · ${i.slots}/${i.max_workers} slots`))))
+      : h("div", { class: "empty" }, "No active initiatives under ~/.pr-plans.")));
+  }
+
+  // ---- log entries (PR page and log page) ----
+
+  function entry(e) {
+    return h("article", { class: "entry" },
+      h("div", { class: "ehead" },
+        h("span", { class: "etime" }, e.time),
+        h("span", { class: "badge", "data-type": e.type }, e.type),
+        h("span", { class: "by" }, e.by),
+        e.prs.map((id) => prLink(id, "pr"))),
+      md(e.body));
+  }
+
+  // ---- PR detail ----
+
+  function sec(key, title, ...body) {
+    return h("details", { class: "sec", "data-sec": key, open: "" }, h("summary", null, title), h("div", { class: "body" }, body));
+  }
+
+  function renderPR(d) {
+    document.title = `${d.id} ${d.title} · prstk`;
+    $("#title").textContent = `${d.id} ${d.title}`;
+    $("#meta").replaceChildren(...sep([
+      C.base ? h("a", { href: C.base }, "← board") : null,
+      C.base ? h("a", { href: logURL() }, "log") : null,
+      d.url ? h("a", { href: d.url, target: "_blank", rel: "noopener" }, "GitHub #" + d.pr_number) : null,
+    ]));
+    const fact = (k, ...v) => [h("dt", null, k), h("dd", null, v)];
+    const facts = h("dl", { class: "facts" },
+      fact("status", d.status, d.tag ? [" ", h("span", { class: "badge tag" }, d.tag)] : null, " · ", since(d.since)),
+      d.blocked || d.reason ? fact("reason", d.reason) : null,
+      fact("parent", d.parent ? prLink(d.parent) : "base branch"),
+      fact("branch", d.branch || "—"),
+      fact("worker", d.worker || "—"),
+      fact("model", d.model || "—"));
+    const rounds = d.spec.director_rounds;
+    rerender(() => $("#main").replaceChildren(h("div", { class: "detail" },
+      facts,
+      sec("spec", "Spec", md(d.spec.spec)),
+      sec("director", `Director review (${rounds.length} round${rounds.length === 1 ? "" : "s"})`,
+        rounds.length ? rounds.map((r) => h("div", { class: "round" }, h("h3", null, r.heading || "(no heading)"), md(r.body)))
+          : h("p", { class: "muted" }, "No review rounds yet.")),
+      sec("dalton", "Dalton's feedback", md(d.spec.dalton)),
+      sec("notes", "Worker notes (notes.md)", md(d.notes)),
+      sec("log", `Log (${d.log.length})`,
+        d.log.length ? d.log.map(entry) : h("p", { class: "muted" }, "No log entries mention this PR."),
+        C.base ? h("p", null, h("a", { href: logURL({ pr: d.id }) }, "open in the log view")) : null))));
+  }
+
+  // ---- initiative log ----
+
+  const q = new URLSearchParams(location.search);
+  const filt = { type: q.get("type") || "", pr: q.get("pr") || "", newest: q.get("order") === "newest" };
+
+  function renderLog(list) {
+    document.title = `log · ${C.key.split("/").pop()} · prstk`;
+    $("#title").textContent = "Log · " + C.key.split("/").pop();
+    $("#meta").replaceChildren(...sep([C.base ? h("a", { href: C.base }, "← board") : null, `${list.length} entries`]));
+    const uniq = (xs) => [...new Set(xs)].sort();
+    const types = uniq(list.map((e) => e.type).concat(filt.type ? [filt.type] : []));
+    const prs = uniq(list.flatMap((e) => e.prs).concat(filt.pr ? [filt.pr] : []));
+    const select = (key, label, values) => h("label", null, label + " ",
+      h("select", { onchange: (e) => { filt[key] = e.target.value; sync(); renderLog(list); } },
+        h("option", { value: "" }, "all"),
+        values.map((v) => { const o = h("option", { value: v }, v); o.selected = v === filt[key]; return o; })));
+    const order = h("input", { type: "checkbox", onchange: (e) => { filt.newest = e.target.checked; sync(); renderLog(list); } });
+    order.checked = filt.newest;
+    let shown = list.filter((e) => (!filt.type || e.type === filt.type) && (!filt.pr || e.prs.includes(filt.pr)));
+    if (filt.newest) shown = shown.slice().reverse();
+    rerender(() => $("#main").replaceChildren(h("div", { class: "log" },
+      h("div", { class: "filters" }, select("type", "type", types), select("pr", "PR", prs),
+        h("label", null, order, " newest first"),
+        h("span", { class: "muted" }, `${shown.length} of ${list.length}`),
+        filt.pr && C.base ? h("a", { href: prURL(filt.pr) }, "PR " + filt.pr + " details") : null),
+      shown.length ? shown.map(entry) : h("div", { class: "empty" }, "No entries match."))));
+  }
+
+  function sync() {
+    const p = new URLSearchParams();
+    if (filt.type) p.set("type", filt.type);
+    if (filt.pr) p.set("pr", filt.pr);
+    if (filt.newest) p.set("order", "newest");
+    history.replaceState(null, "", location.pathname + (p.size ? "?" + p : ""));
   }
 
   async function load() {
     if (C.static) return render(C.data);
     const r = await fetch(C.api, { cache: "no-store" });
-    if (!r.ok) { $("#main").innerHTML = `<div class="empty">${esc(await r.text())}</div>`; return; }
+    if (!r.ok) { $("#main").replaceChildren(h("div", { class: "empty" }, await r.text())); return; }
     const d = await r.json();
-    C.index ? renderIndex(d) : render(d);
+    if (C.index) renderIndex(d);
+    else if (C.view === "pr") renderPR(d);
+    else if (C.view === "log") renderLog(d);
+    else render(d);
   }
 
   load();
   setInterval(() => document.querySelectorAll("[data-since]").forEach((el) => (el.textContent = ago(el.dataset.since))), 15000);
 
-  if (!C.static && C.events) {
+  if (!C.static && !C.readonly && C.events) {
     const conn = $("#conn");
     const es = new EventSource(C.events);
     es.onopen = () => { conn.className = "live"; conn.textContent = "live"; };
     es.onerror = () => { conn.className = "down"; conn.textContent = "disconnected — retrying"; };
     es.onmessage = (e) => {
       const key = e.data;
-      if (C.index || !lastData || key === lastData.key || key === "*") load();
+      const mine = C.key || (lastData && lastData.key);
+      if (C.index || !mine || key === mine || key === "*") load();
     };
   }
 })();

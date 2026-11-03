@@ -316,6 +316,23 @@ Warnings:
 - **Swimlanes:** one per root-to-leaf path; a PR appears in the first lane that contains it. Lanes after the first are labeled by where they branch ("off 02").
 - **Card:** id, title, PR link, parent id, Opus badge (only if opus), blocked badge (reason on hover), time in current status.
 - **Stack tree:** Mermaid diagram (from CDN), nodes colored by status.
+- Clicking a card (or a PR id in the slot bar) opens that PR's detail page; the header links to the initiative log.
+
+### Detail and log views
+
+Read-only, live-updating over the same SSE stream (a page re-fetches when an event names its initiative or `*`).
+
+| Route | Serves |
+|---|---|
+| `GET /i/{repo}/{name}/pr/{id}/` | PR detail page (`/pr/{id}` redirects here) |
+| `GET /i/{repo}/{name}/log/` | initiative log page (`/log` redirects here) |
+| `GET /api/i/{repo}/{name}/pr/{id}` | `render.PRDetail` JSON |
+| `GET /api/i/{repo}/{name}/log` | `[]render.LogEntry` JSON, file order (oldest first) |
+
+- **PR page:** frontmatter facts (status, reason, parent, branch, worker, model, GitHub link), then collapsible sections: Spec (body up to `## Review: Director`), Director review (one block per `###` round), Dalton's feedback, Worker notes (`notes.md`), and the log entries that mention the PR.
+- **Log page:** every LOG.md entry, filterable by type and PR (`?type=review&pr=03`, plus `order=newest`). An entry starts at a `## <yyyy-mm-dd hh:mm> · <type> · <by>` line. It mentions a PR when the PR's id appears as a whole token (`03` matches in "on 03." but not in `103`, `2026-11-03`, `v-03` or `03-slug`).
+- **Path parameters:** `{repo}` and `{name}` must be safe directory names and load as an initiative; `{id}` must equal the id of one of its loaded PRs. Anything else is a 404. Files are read only through paths of the loaded initiative.
+- **Untrusted markdown:** specs, notes and log entries are rendered in the browser only through `DOMPurify.sanitize(marked.parse(...))` (pinned versions from cdn.jsdelivr.net, with SRI). Every other field is inserted as text, never as HTML.
 
 ---
 
