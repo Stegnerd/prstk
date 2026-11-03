@@ -321,7 +321,7 @@ window.PRSTK = {{.Config}};
       sec("director", `Director review (${rounds.length} round${rounds.length === 1 ? "" : "s"})`,
         rounds.length ? rounds.map((r) => h("div", { class: "round" }, h("h3", null, r.heading || "(no heading)"), md(r.body)))
           : h("p", { class: "muted" }, "No review rounds yet.")),
-      sec("dalton", "Dalton's feedback", md(d.spec.dalton)),
+      sec("reviewer", d.spec.reviewer_name ? `${d.spec.reviewer_name}'s feedback` : "Reviewer feedback", md(d.spec.reviewer)),
       sec("notes", "Worker notes (notes.md)", md(d.notes)),
       sec("log", `Log (${d.log.length})`,
         d.log.length ? d.log.map(entry) : h("p", { class: "muted" }, "No log entries mention this PR."),

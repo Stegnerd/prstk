@@ -9,12 +9,25 @@ import (
 
 const (
 	directorHeading = "## Review: Director"
-	daltonHeading   = "## Review: Dalton"
+	reviewPrefix    = "## Review: "
 )
 
+// isHumanReviewHeading reports whether line starts the human reviewer's
+// section: "## Review: <name>" with a non-empty name other than Director. Any
+// name counts, so specs written when the reviewer was hard-coded
+// ("## Review: Dalton") keep parsing. The caller must skip fenced lines.
+func isHumanReviewHeading(line string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimRight(line, " \t"), reviewPrefix)
+	if !ok {
+		return false
+	}
+	name := strings.TrimSpace(rest)
+	return name != "" && name != "Director"
+}
+
 // AppendDirectorRound adds "### Round N (YYYY-MM-DD): <verdict>" plus body as
-// the last item under "## Review: Director" (before "## Review: Dalton" if
-// that exists, otherwise at the end of the file) and returns N, which is the
+// the last item under "## Review: Director" (before the human
+// "## Review: <name>" section if that exists, otherwise at the end of the file) and returns N, which is the
 // number of existing "### Round" headings in that section plus one.
 //
 // Only the body is rewritten; the frontmatter bytes on disk are kept as-is.
@@ -101,13 +114,13 @@ func insertDirectorRound(doc string, date time.Time, verdict, body string) (stri
 
 	body = strings.TrimRight(demoteHeadings(strings.ReplaceAll(body, "\r\n", "\n")), " \t\r\n")
 	if start < 0 {
-		// No Director section: create it before Dalton's, or at the end.
+		// No Director section: create it before the human reviewer's section, or at the end.
 		at := len(lines)
 		fenced = false
 		for i, l := range lines {
 			if isFence(l) {
 				fenced = !fenced
-			} else if !fenced && strings.TrimRight(l, " \t") == daltonHeading {
+			} else if !fenced && isHumanReviewHeading(l) {
 				at = i
 				break
 			}
