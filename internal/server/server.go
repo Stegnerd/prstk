@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,28 +61,85 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.page(func(r *http.Request) render.PageOpts {
 		return render.PageOpts{Title: "prstk boards", API: "/api/initiatives", Events: "/events", IndexJS: true}
 	}))
-	mux.HandleFunc("GET /i/{repo}/{name}/{$}", s.page(func(r *http.Request) render.PageOpts {
-		k := r.PathValue("repo") + "/" + r.PathValue("name")
-		return render.PageOpts{Title: r.PathValue("name") + " · prstk", API: "/api/i/" + k, Events: "/events"}
-	}))
-	mux.HandleFunc("GET /i/{repo}/{name}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
-	})
+	mux.HandleFunc("GET /i/{repo}/{name}/{$}", s.initiativePage(func(in *plan.Initiative, _ *plan.Spec, k string) render.PageOpts {
+		return render.PageOpts{Title: in.Name + " · prstk", API: "/api/i/" + k, Events: "/events", Key: k, Base: "/i/" + k + "/"}
+	}, false))
+	mux.HandleFunc("GET /i/{repo}/{name}/pr/{id}/{$}", s.initiativePage(func(in *plan.Initiative, p *plan.Spec, k string) render.PageOpts {
+		return render.PageOpts{Title: p.ID + " " + p.Title + " · prstk", API: "/api/i/" + k + "/pr/" + url.PathEscape(p.ID),
+			Events: "/events", View: render.ViewPR, Key: k, Base: "/i/" + k + "/"}
+	}, true))
+	mux.HandleFunc("GET /i/{repo}/{name}/log/{$}", s.initiativePage(func(in *plan.Initiative, _ *plan.Spec, k string) render.PageOpts {
+		return render.PageOpts{Title: "log · " + in.Name + " · prstk", API: "/api/i/" + k + "/log",
+			Events: "/events", View: render.ViewLog, Key: k, Base: "/i/" + k + "/"}
+	}, false))
+	mux.HandleFunc("GET /i/{repo}/{name}", s.slashRedirect(false))
+	mux.HandleFunc("GET /i/{repo}/{name}/pr/{id}", s.slashRedirect(true))
+	mux.HandleFunc("GET /i/{repo}/{name}/log", s.slashRedirect(false))
 	mux.HandleFunc("GET /api/initiatives", s.apiIndex)
 	mux.HandleFunc("GET /api/i/{repo}/{name}", s.apiBoard)
+	mux.HandleFunc("GET /api/i/{repo}/{name}/pr/{id}", s.apiPR)
+	mux.HandleFunc("GET /api/i/{repo}/{name}/log", s.apiLog)
 	mux.HandleFunc("GET /events", s.events)
 	return mux
 }
 
 func (s *Server) page(opts func(*http.Request) render.PageOpts) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		b, err := render.BoardPage(opts(r))
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+		writePage(w, opts(r))
+	}
+}
+
+func writePage(w http.ResponseWriter, o render.PageOpts) {
+	b, err := render.BoardPage(o)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Write(b)
+}
+
+// lookup resolves {repo}/{name} (and {id} when withID) against what is on
+// disk. repo and name must pass safeName and load as an initiative; id must
+// equal the id of a PR loaded from that initiative. On failure it writes a
+// 404 and returns ok=false. Nothing from the URL reaches the filesystem
+// except the safeName-checked repo/name; files are then read only via paths
+// of the loaded initiative and its PRs.
+func (s *Server) lookup(w http.ResponseWriter, r *http.Request, withID bool) (in *plan.Initiative, p *plan.Spec, key string, ok bool) {
+	repo, name := r.PathValue("repo"), r.PathValue("name")
+	if !safeName(repo) || !safeName(name) {
+		http.NotFound(w, r)
+		return nil, nil, "", false
+	}
+	in, err := plan.LoadInitiative(filepath.Join(s.Home, repo, name))
+	if err != nil {
+		http.Error(w, "initiative not found (torn down?) — back to the index at /", http.StatusNotFound)
+		return nil, nil, "", false
+	}
+	if withID {
+		if p = in.PR(r.PathValue("id")); p == nil {
+			http.Error(w, "no such PR in this initiative — back to the board at /i/"+repo+"/"+name+"/", http.StatusNotFound)
+			return nil, nil, "", false
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(b)
+	}
+	return in, p, repo + "/" + name, true
+}
+
+func (s *Server) initiativePage(opts func(*plan.Initiative, *plan.Spec, string) render.PageOpts, withID bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if in, p, k, ok := s.lookup(w, r, withID); ok {
+			writePage(w, opts(in, p, k))
+		}
+	}
+}
+
+// slashRedirect sends a validated path to its trailing-slash form.
+func (s *Server) slashRedirect(withID bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, _, _, ok := s.lookup(w, r, withID); ok {
+			http.Redirect(w, r, r.URL.EscapedPath()+"/", http.StatusMovedPermanently)
+		}
 	}
 }
 
@@ -130,17 +188,28 @@ func (s *Server) apiIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiBoard(w http.ResponseWriter, r *http.Request) {
-	repo, name := r.PathValue("repo"), r.PathValue("name")
-	if !safeName(repo) || !safeName(name) {
+	if in, _, _, ok := s.lookup(w, r, false); ok {
+		writeJSON(w, render.BuildBoard(in, s.Now()))
+	}
+}
+
+func (s *Server) apiPR(w http.ResponseWriter, r *http.Request) {
+	in, p, _, ok := s.lookup(w, r, true)
+	if !ok {
+		return
+	}
+	d, ok := render.BuildPRDetail(in, p.ID, s.Now())
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	in, err := plan.LoadInitiative(filepath.Join(s.Home, repo, name))
-	if err != nil {
-		http.Error(w, "initiative not found (torn down?) — back to the index at /", http.StatusNotFound)
-		return
+	writeJSON(w, d)
+}
+
+func (s *Server) apiLog(w http.ResponseWriter, r *http.Request) {
+	if in, _, _, ok := s.lookup(w, r, false); ok {
+		writeJSON(w, render.InitiativeLog(in))
 	}
-	writeJSON(w, render.BuildBoard(in, s.Now()))
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
