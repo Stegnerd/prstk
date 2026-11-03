@@ -60,6 +60,8 @@ main { padding: 12px 16px 40px; }
 section.tree { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; }
 section.tree h2, .index h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .index ul { list-style: none; padding: 0; margin: 0; }
+.index details.archived { margin-top: 18px; }
+.index details.archived summary { text-transform: uppercase; }
 .index li { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
 .index a { color: var(--accent); text-decoration: none; font-weight: 600; }
 .empty { color: var(--muted); padding: 20px; }
@@ -122,7 +124,7 @@ window.PRSTK = {{.Config}};
   const C = window.PRSTK;
   const $ = (s) => document.querySelector(s);
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  if (window.mermaid) mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default" });
+  if (window.mermaid) mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
 
   // h builds an element. Strings in kids become text nodes; attrs are set
   // with setAttribute (never parsed as HTML); "on*" attrs add listeners.
@@ -170,6 +172,8 @@ window.PRSTK = {{.Config}};
   const since = (iso) => h("span", { "data-since": iso }, ago(iso));
   const sep = (parts) => parts.filter(Boolean).flatMap((p, i) => (i ? [" · ", p] : [p]));
 
+  const archivedBadge = () => (C.readonly ? h("span", { class: "badge" }, "archived") : null);
+
   // keep re-renders in place: same scroll, same open/closed sections
   function rerender(build) {
     const scroll = [window.scrollX, window.scrollY];
@@ -206,22 +210,23 @@ window.PRSTK = {{.Config}};
     lastData = d;
     document.title = `${d.initiative} · prstk`;
     $("#title").textContent = d.initiative;
-    $("#meta").replaceChildren(...sep([d.repo, h("span", null, "base ", h("b", null, d.base)), d.dir,
+    $("#meta").replaceChildren(...sep([archivedBadge(), d.repo, h("span", null, "base ", h("b", null, d.base)), d.dir,
       C.base ? h("a", { href: logURL() }, "log") : null,
       C.static ? null : h("a", { href: "/" }, "all initiatives")]));
 
     const slots = [];
-    for (let i = 0; i < d.max_workers; i++) {
+    // Archived boards have no workers: skip the slot bar and the next list.
+    for (let i = 0; !C.readonly && i < d.max_workers; i++) {
       const s = d.slots[i];
       slots.push(s
         ? h("span", { class: "slot" }, `Slot ${i + 1}: ${s.worker || "?"} → `, prLink(s.pr), ` (${s.status}, `, since(s.since), ")")
         : h("span", { class: "slot idle" }, `Slot ${i + 1}: idle`));
     }
-    for (let i = d.max_workers; i < d.slots.length; i++) {
+    for (let i = d.max_workers; !C.readonly && i < d.slots.length; i++) {
       const s = d.slots[i];
       slots.push(h("span", { class: "slot", style: "color:var(--bad)" }, `over limit: ${s.worker} → `, prLink(s.pr)));
     }
-    if (d.next.length) slots.push(h("span", { class: "next" }, "next: ", d.next.flatMap((id, i) => (i ? [", ", prLink(id)] : [prLink(id)]))));
+    if (!C.readonly && d.next.length) slots.push(h("span", { class: "next" }, "next: ", d.next.flatMap((id, i) => (i ? [", ", prLink(id)] : [prLink(id)]))));
 
     const issues = d.issues.length ? h("div", { class: "issues" }, d.issues.map((i) =>
       h("div", { class: i.error ? "error" : "warning" }, `${i.error ? "error" : "warning"}${i.pr ? " " + i.pr : ""}: ${i.msg}`))) : null;
@@ -238,7 +243,7 @@ window.PRSTK = {{.Config}};
       const tree = $("#tree");
       const keep = tree && d.mermaid === lastMermaid ? tree : null;
       const slot = h("div", { id: "tree-slot" });
-      $("#main").replaceChildren(h("div", { class: "slots" }, slots), issues || "", h("div", { class: "board-wrap" }, grid),
+      $("#main").replaceChildren(slots.length ? h("div", { class: "slots" }, slots) : "", issues || "", h("div", { class: "board-wrap" }, grid),
         h("section", { class: "tree" }, h("h2", null, "Stack tree"), slot));
       if (keep) return slot.replaceWith(keep);
       const div = h("div", { id: "tree" });
@@ -252,14 +257,26 @@ window.PRSTK = {{.Config}};
     });
   }
 
-  function renderIndex(list) {
+  const enc = (key) => key.split("/").map(encodeURIComponent).join("/");
+
+  function renderIndex(list, archived) {
     $("#title").textContent = "prstk boards";
-    $("#meta").textContent = list.length + " active initiative" + (list.length === 1 ? "" : "s");
-    $("#main").replaceChildren(h("div", { class: "index" }, h("h2", null, "Active initiatives"), list.length
-      ? h("ul", null, list.map((i) => h("li", null,
-          h("a", { href: "/i/" + i.key.split("/").map(encodeURIComponent).join("/") + "/" }, i.initiative), " ",
-          h("span", { class: "meta" }, `${i.repo} · ${i.dir} · ${i.prs} PRs · ${i.slots}/${i.max_workers} slots`))))
-      : h("div", { class: "empty" }, "No active initiatives under ~/.pr-plans.")));
+    $("#meta").textContent = `${list.length} active · ${archived.length} archived`;
+    rerender(() => $("#main").replaceChildren(h("div", { class: "index" },
+      h("h2", null, "Active initiatives"),
+      list.length
+        ? h("ul", null, list.map((i) => h("li", null,
+            h("a", { href: "/i/" + enc(i.key) + "/" }, i.initiative), " ",
+            h("span", { class: "meta" }, `${i.repo} · ${i.dir} · ${i.prs} PRs · ${i.slots}/${i.max_workers} slots`))))
+        : h("div", { class: "empty" }, "No active initiatives under ~/.pr-plans."),
+      h("details", { class: "sec archived", "data-sec": "archived", open: "" },
+        h("summary", null, `Archived (${archived.length})`),
+        h("div", { class: "body" }, archived.length
+          ? h("ul", null, archived.map((i) => h("li", null,
+              // legacy keys name a file (no trailing slash); dir archives are boards
+              h("a", { href: "/a/" + enc(i.key) + (i.legacy ? "" : "/") }, i.initiative), " ",
+              h("span", { class: "meta" }, sep([i.repo, i.dir, i.legacy ? h("span", { class: "badge" }, "legacy") : `${i.prs} PRs`])))))
+          : h("div", { class: "empty" }, "Nothing archived yet. prstk teardown archives a finished initiative here."))))));
   }
 
   // ---- log entries (PR page and log page) ----
@@ -284,6 +301,7 @@ window.PRSTK = {{.Config}};
     document.title = `${d.id} ${d.title} · prstk`;
     $("#title").textContent = `${d.id} ${d.title}`;
     $("#meta").replaceChildren(...sep([
+      archivedBadge(),
       C.base ? h("a", { href: C.base }, "← board") : null,
       C.base ? h("a", { href: logURL() }, "log") : null,
       d.url ? h("a", { href: d.url, target: "_blank", rel: "noopener" }, "GitHub #" + d.pr_number) : null,
@@ -318,7 +336,7 @@ window.PRSTK = {{.Config}};
   function renderLog(list) {
     document.title = `log · ${C.key.split("/").pop()} · prstk`;
     $("#title").textContent = "Log · " + C.key.split("/").pop();
-    $("#meta").replaceChildren(...sep([C.base ? h("a", { href: C.base }, "← board") : null, `${list.length} entries`]));
+    $("#meta").replaceChildren(...sep([archivedBadge(), C.base ? h("a", { href: C.base }, "← board") : null, `${list.length} entries`]));
     const uniq = (xs) => [...new Set(xs)].sort();
     const types = uniq(list.map((e) => e.type).concat(filt.type ? [filt.type] : []));
     const prs = uniq(list.flatMap((e) => e.prs).concat(filt.pr ? [filt.pr] : []));
@@ -346,12 +364,26 @@ window.PRSTK = {{.Config}};
     history.replaceState(null, "", location.pathname + (p.size ? "?" + p : ""));
   }
 
+  // ---- legacy single-file archive ----
+
+  function renderLegacy(d) {
+    document.title = `${d.initiative} (archived) · prstk`;
+    $("#title").textContent = d.initiative;
+    $("#meta").replaceChildren(...sep([archivedBadge(), h("span", { class: "badge" }, "legacy"), d.repo, d.file, h("a", { href: "/" }, "all initiatives")]));
+    $("#main").replaceChildren(h("div", { class: "detail" }, h("section", { class: "legacy" }, md(d.body))));
+  }
+
   async function load() {
     if (C.static) return render(C.data);
-    const r = await fetch(C.api, { cache: "no-store" });
+    // The index lists archives from a sibling endpoint so /api/initiatives
+    // keeps its array shape for other consumers; a failure there only hides
+    // the Archived section's contents.
+    const [r, ar] = await Promise.all([fetch(C.api, { cache: "no-store" }),
+      C.index ? fetch("/api/archives", { cache: "no-store" }).catch(() => null) : null]);
     if (!r.ok) { $("#main").replaceChildren(h("div", { class: "empty" }, await r.text())); return; }
     const d = await r.json();
-    if (C.index) renderIndex(d);
+    if (C.index) renderIndex(d, ar && ar.ok ? await ar.json() : []);
+    else if (C.view === "legacy") renderLegacy(d);
     else if (C.view === "pr") renderPR(d);
     else if (C.view === "log") renderLog(d);
     else render(d);
