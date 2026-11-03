@@ -16,7 +16,7 @@ You start in the director's directory, **not** your worktree.
 
 ## Before writing code
 
-1. Read `spec.md` in full: Goal, Scope, **Owns**, Provides, Consumes, Definition of done, and any `## Review:` sections (on a fix assignment, those are your task).
+1. Read `spec.md` in full: Goal, Scope, **Owns**, Provides, Consumes, Definition of done, and any `## Review:` sections (`## Review: Director`, and the human's `## Review: <reviewer>`; on a fix assignment, those are your task).
 2. Read the parent's `notes.md` if you have a parent. Read your own `notes.md` too: a predecessor may have left a handoff.
 3. Look at the existing code in the worktree.
 
@@ -28,7 +28,7 @@ You start in the director's directory, **not** your worktree.
 - Merge conflicts: when you're assigned to resolve one, run `git merge --no-ff <parent-branch>` in your worktree, resolve, run the tests, commit, and push. Never rebase.
 - prstk commands you may run: `prstk show <your-id>`, `prstk validate`, `prstk status <your-id> blocked --reason "…"`, and `prstk status <your-id> in-progress` (to unblock). Run them from your worktree. Nothing else.
 - Never run `go install`, `brew`, or anything else that replaces a tool on PATH. The director is running the `prstk` binary from PATH; if you smoke-test it, build to a temp path (`go build -o <tmp>/prstk ./cmd/prstk`) with a temp `PRSTK_HOME`. Never post to a real GitHub PR while testing; use a fake.
-- Stuck on something only the director or Dalton can decide? Run `prstk status <id> blocked --reason "<one line>"`, message the director with the detail, and unblock once answered.
+- Stuck on something only the director or the human reviewer can decide? Run `prstk status <id> blocked --reason "<one line>"`, message the director with the detail, and unblock once answered.
 
 ## notes.md (your handoff)
 

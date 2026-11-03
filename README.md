@@ -50,10 +50,21 @@ If `settings.json` already exists, add the key to its existing `env` object (or 
 ### 2. Install the CLI
 
 ```sh
-cd ~/Developer/golang/prstk
-go install ./cmd/prstk      # installs to $(go env GOPATH)/bin/prstk
-prstk --help                # should list review and log among the commands
+go install github.com/Stegnerd/prstk/cmd/prstk@latest   # installs to $(go env GOPATH)/bin/prstk
+prstk --help                                            # should list review and log among the commands
 ```
+
+Make sure `$(go env GOPATH)/bin` is on your PATH.
+
+Or install from a clone. The agent definitions in step 3 live in the repo, so you need a clone anyway:
+
+```sh
+git clone https://github.com/Stegnerd/prstk.git
+cd prstk
+go install ./cmd/prstk
+```
+
+Below, `<path-to-prstk>` means wherever you cloned it.
 
 > **Don't reinstall while an initiative is running.** The director and its workers use the `prstk` on your PATH, and swapping it mid-run changes the tool under them. Reinstall between initiatives. To try a change during a run, build it to a temp path instead: `go build -o /tmp/prstk-dev ./cmd/prstk`.
 
@@ -63,8 +74,8 @@ Claude Code loads agent definitions from `~/.claude/agents/`. **Symlink** them t
 
 ```sh
 mkdir -p ~/.claude/agents
-ln -sf ~/Developer/golang/prstk/agents/prstk-director.md ~/.claude/agents/prstk-director.md
-ln -sf ~/Developer/golang/prstk/agents/prstk-worker.md   ~/.claude/agents/prstk-worker.md
+ln -sf <path-to-prstk>/agents/prstk-director.md ~/.claude/agents/prstk-director.md
+ln -sf <path-to-prstk>/agents/prstk-worker.md   ~/.claude/agents/prstk-worker.md
 ```
 
 Check them:
@@ -100,7 +111,10 @@ It checks git, gh, gh auth, that the base branch exists on origin, and the agent
 default_base: develop       # base branch when init has no --base
 max_workers: 2              # parallel worker slots
 setup: "test -f go.mod && go mod download || true"   # run in each new worktree
+reviewer: <your name>       # name in the "## Review: <name>" heading; default "Human"
 ```
+
+`reviewer` is the name of the human who reviews and merges. The director copies your feedback word for word into a `## Review: <name>` section of the PR's spec, using this name. If you leave it out, the heading is `## Review: Human`. Specs written earlier with another name (for example `## Review: Dalton`) keep working.
 
 ---
 
@@ -111,7 +125,7 @@ setup: "test -f go.mod && go mod download || true"   # run in each new worktree
 From inside the target repo:
 
 ```sh
-cd ~/Developer/golang/sample_proj
+cd path/to/your-repo
 claude --agent prstk-director --add-dir ~/.pr-plans
 ```
 
@@ -181,7 +195,7 @@ Merge with a **merge commit**, not a squash. Children are built on the parent's 
    That posts a comment review to the PR, adds `### Round N` to the spec and writes the LOG entry, all in one step.
    - Changes needed: `prstk status <id> changes-requested`, message the worker, then re-open and re-review.
    - Approved: `prstk ready <id>` flips the draft to ready and frees the slot. Then the director messages the worker and **stops it with `TaskStop`**, because workers can't exit on their own.
-7. **Your feedback.** The director copies it word for word into `## Review: Dalton`, runs `prstk status <id> fix-pending` and `prstk log feedback "…"`, and a **fresh** worker fixes it.
+7. **Your feedback.** The director copies it word for word into `## Review: <reviewer>` (the `reviewer` name from `config.yaml`, default `Human`), runs `prstk status <id> fix-pending` and `prstk log feedback "…"`, and a **fresh** worker fixes it.
 8. **Propagate.** When a PR that has children gets new commits, `prstk propagate <id>` merges it down the stack. Conflicted children become `fix-pending`.
 9. **Merged.** You say `merged #N`, and `prstk merged <id>` verifies it on GitHub, retargets the children to the base branch, updates the stack navigation and removes the worktree.
 10. **Teardown.** When every PR is `merged` or `abandoned`, `prstk teardown` moves the whole initiative to `_archive/<name>/` and clears `current`.
@@ -275,3 +289,9 @@ Each file region has exactly one writer:
 - **Use `--model opus` for risky PRs**: schemas and migrations, anything that deletes data, security, concurrency.
 - **Pin interfaces in `Provides`.** Children are written against them, so exact signatures, routes and tables save fix rounds.
 - **"Merged #N" means the GitHub PR number, not the prstk PR id.** In the pilot, prstk PR 06 was GitHub #4. The board shows both.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
