@@ -10,10 +10,10 @@ A framework for breaking one task into a **stack of GitHub PRs**, worked in para
 
 | Role | Who | Does | Never does |
 |---|---|---|---|
-| **Director** | Claude Code lead session, **Opus** | Plans the split, writes PR specs, runs `prstk`, spawns workers, reviews code, posts review comments, records Dalton's feedback, re-plans | Merges, force-pushes, writes code for PRs, edits `notes.md` or generated blocks |
+| **Director** | Claude Code lead session, **Opus** | Plans the split, writes PR specs, runs `prstk`, spawns workers, reviews code, posts review comments, records the reviewer's feedback, re-plans | Merges, force-pushes, writes code for PRs, edits `notes.md` or generated blocks |
 | **Worker** (max 2 at once) | Claude Code teammate, **Sonnet** (Opus if the PR's spec says `model: opus`) | Implements one PR in its own worktree, writes `notes.md`, commits and pushes its own branch, resolves merge conflicts | Merges, force-pushes, edits `spec.md` / `PLAN.md` / `LOG.md`, renegotiates scope with other workers |
 | **`prstk`** | Go CLI | All deterministic mechanics: worktrees, branches, PR creation, retargeting, stack nav, validation, board | Anything requiring judgment (e.g. conflict resolution) |
-| **Dalton** | Human | Reviews PRs, gives feedback to the director in chat, **merges** | — |
+| **Reviewer** | Human | Reviews PRs, gives feedback to the director in chat, **merges** | — |
 
 Agents run with **Claude Code agent teams** (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`): the director is the lead, workers are teammates. Messaging is used for coordination; **anything that changes the plan must land in a file.**
 
@@ -23,8 +23,8 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 
 ## 2. Non-negotiable rules
 
-1. **Only Dalton merges.** Nothing in the system merges a PR.
-2. **No history rewriting.** No rebases, no force-pushes, no squash. Dalton merges with merge commits.
+1. **Only the human reviewer merges.** Nothing in the system merges a PR.
+2. **No history rewriting.** No rebases, no force-pushes, no squash. The reviewer merges with merge commits.
 3. **Formal stacks.** Each PR's GitHub base is its parent's branch (or the initiative base branch if it has no parent).
 4. **One parent per PR.** A PR that would need two parents is a planning error; the director must restructure.
 5. **Fixes propagate up a stack by merging the parent into the child** (`git merge --no-ff <parent-branch>`), never rebasing.
@@ -78,7 +78,7 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 |---|---|---|
 | `PLAN.md` hand-written sections | Director | All |
 | `PLAN.md` generated block | `prstk` | All |
-| `LOG.md` | `prstk` (mechanical entries, and the director's decision entries via `prstk log` / `prstk review`) | Dalton, director |
+| `LOG.md` | `prstk` (mechanical entries, and the director's decision entries via `prstk log` / `prstk review`) | Reviewer, director |
 | `prs/*/spec.md` frontmatter | `prstk` (and director at creation via `prstk add`) | All |
 | `prs/*/spec.md` body | Director (`### Round N` items inside `## Review: Director` are written by `prstk review`) | Worker, director |
 | `prs/*/notes.md` | Assigned worker only | Director, downstream workers |
@@ -90,7 +90,7 @@ No two writers share a file region. `prstk` touches frontmatter and marker-delim
 ```markdown
 ---
 initiative: pokemon-api
-repo: dalton/sample_proj
+repo: your-org/sample_proj
 base_branch: develop
 created: 2026-11-03T14:15:00-05:00
 max_workers: 2
@@ -148,7 +148,7 @@ Body sections (director-written):
 - `## Consumes` — interface it relies on from its parent
 - `## Definition of done` — tests pass, lint clean, notes filled, etc.
 - `## Review: Director` — director's review findings per round
-- `## Review: Dalton` — Dalton's feedback, copied in by the director **before** a fix worker is spawned
+- `## Review: <reviewer>` — the human reviewer's feedback, copied in word for word by the director **before** a fix worker is spawned. `<reviewer>` is the `reviewer` value from `config.yaml` (default `Human`). Any `## Review:` heading whose name isn't `Director` is read as this section, so older specs that say `## Review: Dalton` still work.
 
 ### `prs/<id>-<slug>/notes.md`
 
@@ -163,6 +163,7 @@ Worker-written. Must be good enough for a cold-start successor.
 default_base: develop
 max_workers: 2
 setup: "go mod download"   # run in each new worktree after creation
+reviewer: Ada              # human reviewer's name, used in the "## Review: <name>" heading; default "Human"
 ```
 
 ---
@@ -178,7 +179,7 @@ setup: "go mod download"   # run in each new worktree after creation
 | `director-review` | `prstk open` | Draft PR open, director reviewing | yes |
 | `changes-requested` | director (`prstk status`) | Back to the worker | yes |
 | `awaiting-you` | `prstk ready` | PR marked ready for review; worker released | no |
-| `fix-pending` | director / `prstk propagate` | Needs a fresh worker (Dalton feedback or merge conflict) | no |
+| `fix-pending` | director / `prstk propagate` | Needs a fresh worker (reviewer feedback or merge conflict) | no |
 | `fixing` | `prstk assign` (from `fix-pending`) | Fix worker active | yes |
 | `merged` | `prstk merged` | Verified merged via `gh` | no |
 | `abandoned` | director (`prstk status`) | Dropped/replaced during re-plan | no |
@@ -197,9 +198,9 @@ Workers stay alive until **director review completes** (`prstk ready`). After th
 4. Director: `prstk open <id>` → draft PR created.
 5. Director reviews (`gh pr diff`), posts findings as **comment reviews** on GitHub (approve/request-changes aren't possible on your own PRs) and in `## Review: Director`. If changes needed: `prstk status <id> changes-requested`, messages worker, loop.
 6. Director satisfied: `prstk ready <id>` → draft flipped to ready for review, worker released, slot freed.
-7. Dalton reviews. Feedback goes to the director in chat. Director copies it into `## Review: Dalton`, runs `prstk status <id> fix-pending`, then assigns a fresh worker when `next` says so. After fixes, director re-reviews and runs `prstk ready` again.
+7. The reviewer reviews. Feedback goes to the director in chat. Director copies it into `## Review: <reviewer>`, runs `prstk status <id> fix-pending`, then assigns a fresh worker when `next` says so. After fixes, director re-reviews and runs `prstk ready` again.
 8. If a PR with children receives new commits: `prstk propagate <id>`.
-9. Dalton merges and tells the director "merged #N". Director runs `prstk merged <id>`.
+9. The reviewer merges and tells the director "merged #N". Director runs `prstk merged <id>`.
 10. When everything is `merged` or `abandoned`: `prstk teardown`.
 
 ---
@@ -209,7 +210,7 @@ Workers stay alive until **director review completes** (`prstk ready`). After th
 Free slots = `max_workers` − count of PRs in slot-holding statuses.
 
 Candidate order:
-1. `fix-pending` PRs (they unblock Dalton's merges)
+1. `fix-pending` PRs (they unblock the reviewer's merges)
 2. *ready* PRs, by **critical path**: number of non-merged, non-abandoned descendants, descending
 3. Tiebreak by id ascending
 
@@ -301,7 +302,7 @@ Warnings:
 
 ## 10. Live board
 
-`prstk board --serve` — Dalton runs this in a terminal tab. The director does not start it.
+`prstk board --serve` — the reviewer runs this in a terminal tab. The director does not start it.
 
 - Go `net/http`, HTML/JS/CSS via `embed`. No external Go deps beyond YAML parsing.
 - **Change detection:** poll mtimes of all plan files once per second (not fsnotify — no recursive watch, editors save via rename).
@@ -331,7 +332,7 @@ Read-only, live-updating over the same SSE stream (a page re-fetches when an eve
 | `GET /api/i/{repo}/{name}/pr/{id}` | `render.PRDetail` JSON |
 | `GET /api/i/{repo}/{name}/log` | `[]render.LogEntry` JSON, file order (oldest first) |
 
-- **PR page:** frontmatter facts (status, reason, parent, branch, worker, model, GitHub link), then collapsible sections: Spec (body up to `## Review: Director`), Director review (one block per `###` round), Dalton's feedback, Worker notes (`notes.md`), and the log entries that mention the PR.
+- **PR page:** frontmatter facts (status, reason, parent, branch, worker, model, GitHub link), then collapsible sections: Spec (body up to `## Review: Director`), Director review (one block per `###` round), the reviewer's feedback, Worker notes (`notes.md`), and the log entries that mention the PR.
 - **Log page:** every LOG.md entry, filterable by type and PR (`?type=review&pr=03`, plus `order=newest`). An entry starts at a `## <yyyy-mm-dd hh:mm> · <type> · <by>` line. It mentions a PR when the PR's id appears as a whole token (`03` matches in "on 03." but not in `103`, `2026-11-03`, `v-03` or `03-slug`).
 - **Path parameters:** `{repo}` and `{name}` must be safe directory names and load as an initiative; `{id}` must equal the id of one of its loaded PRs. Anything else is a 404. Files are read only through paths of the loaded initiative.
 - **Untrusted markdown:** specs, notes and log entries are rendered in the browser only through `DOMPurify.sanitize(marked.parse(...))` (pinned versions from cdn.jsdelivr.net, with SRI). Every other field is inserted as text, never as HTML.
@@ -361,7 +362,7 @@ Teardown (§8) moves a finished initiative to `<repo>/_archive/<dir>/`. The boar
 
 Global, in `~/.claude/agents/`:
 
-- `prstk-director.md` — model: opus. Planning heuristics (schema/migrations first; interfaces before implementations; short chains; no two-parent PRs; flag risky PRs `model: opus`), full lifecycle (§6), review standards, the rule that plan changes go into files, never merges/force-pushes. Asks Dalton for the base branch at init.
+- `prstk-director.md` — model: opus. Planning heuristics (schema/migrations first; interfaces before implementations; short chains; no two-parent PRs; flag risky PRs `model: opus`), full lifecycle (§6), review standards, the rule that plan changes go into files, never merges/force-pushes. Asks the human for the base branch at init.
 - `prstk-worker.md` — model: sonnet. Work only in assigned worktree; read `spec.md` first; stay inside `## Owns`; message the director (not other workers) for scope/interface changes; commit and push own branch, never force; fill `notes.md` for a cold-start successor; report "done" only when Definition of done is met.
 
 ---
