@@ -79,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/i/{repo}/{name}", s.apiBoard)
 	mux.HandleFunc("GET /api/i/{repo}/{name}/pr/{id}", s.apiPR)
 	mux.HandleFunc("GET /api/i/{repo}/{name}/log", s.apiLog)
+	s.registerArchive(mux)
 	mux.HandleFunc("GET /events", s.events)
 	return mux
 }
