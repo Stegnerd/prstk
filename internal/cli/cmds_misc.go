@@ -119,9 +119,14 @@ func cmdTeardown(a *App) error {
 	if err != nil {
 		return err
 	}
+	locked := true
+	defer func() {
+		if locked {
+			lock.Release()
+		}
+	}()
 	in, err := plan.LoadInitiative(dir)
 	if err != nil {
-		lock.Release()
 		return err
 	}
 	a.attach(in)
@@ -132,71 +137,65 @@ func cmdTeardown(a *App) error {
 		}
 	}
 	if len(open) > 0 {
-		lock.Release()
 		return fmt.Errorf("refusing: not merged/abandoned: %s", strings.Join(open, ", "))
 	}
-	wts, _ := os.ReadDir(filepath.Join(dir, "worktrees"))
+	wtDir := filepath.Join(dir, "worktrees")
+	wts, _ := os.ReadDir(wtDir)
 	for _, w := range wts {
-		wt := filepath.Join(dir, "worktrees", w.Name())
+		wt := filepath.Join(wtDir, w.Name())
 		if dirty, err := a.Git.Dirty(wt); err == nil && dirty {
-			lock.Release()
 			return fmt.Errorf("refusing: worktree %s has uncommitted changes", wt)
 		}
 	}
+	archive := plan.ArchivePath(in.RepoDir(), in.Name)
+	if _, err := os.Lstat(archive); err == nil {
+		return fmt.Errorf("refusing: %s already exists", archive)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	now := a.Now()
-	if err := in.AppendLog(now, "teardown", fmt.Sprintf("archived to _archive/%s.md", in.Name)); err != nil {
-		lock.Release()
+	if err := in.AppendLog(now, "teardown", fmt.Sprintf("archived to _archive/%s/", in.Name)); err != nil {
 		return err
 	}
 	if _, err := a.regenerate(dir); err != nil { // final generated block
-		lock.Release()
 		return err
 	}
-	planB, err := os.ReadFile(in.PlanPath())
-	if err != nil {
-		lock.Release()
-		return err
-	}
-	logB, err := os.ReadFile(in.LogPath())
-	if err != nil {
-		lock.Release()
-		return err
-	}
-	archDir := filepath.Join(in.RepoDir(), "_archive")
-	if err := os.MkdirAll(archDir, 0o755); err != nil {
-		lock.Release()
-		return err
-	}
-	archive := filepath.Join(archDir, in.Name+".md")
-	content := string(planB) + "\n\n---\n\n" + string(logB)
-	if err := plan.WriteFileAtomic(archive, []byte(content)); err != nil {
-		lock.Release()
-		return err
-	}
-	// Only after the archive is written: remove worktrees and the initiative.
+	// Remove worktrees first; until the rename below, the initiative stays
+	// in place and a re-run picks up where this one stopped.
 	repo, rerr := a.repoPath(in)
 	for _, w := range wts {
-		wt := filepath.Join(dir, "worktrees", w.Name())
+		wt := filepath.Join(wtDir, w.Name())
 		if rerr == nil {
 			if _, err := a.Git.Run(repo, "worktree", "remove", wt); err != nil {
-				lock.Release()
-				return fmt.Errorf("archived to %s, but removing worktree failed: %w (re-run teardown)", archive, err)
+				return fmt.Errorf("removing worktree failed: %w (initiative left at %s; re-run teardown)", err, dir)
 			}
 		}
 	}
 	if rerr == nil {
 		a.Git.Run(repo, "worktree", "prune")
 	}
+	// Drop the runtime-only files so the archive holds just the plan data.
+	// Detach first so verbose logging doesn't recreate .prstk.log.
+	a.in = nil
+	a.Git.Log = nil
 	lock.Release()
-	a.in = nil // its .prstk.log is about to vanish
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("archived to %s, but deleting %s failed: %w", archive, dir, err)
+	locked = false
+	for _, p := range []string{in.LockPath(), in.VerbosePath(), wtDir} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing %s failed: %w (initiative left at %s; re-run teardown)", p, err, dir)
+		}
+	}
+	if err := os.MkdirAll(plan.ArchiveRoot(in.RepoDir()), 0o755); err != nil {
+		return fmt.Errorf("%w (initiative left at %s; re-run teardown)", err, dir)
+	}
+	if err := os.Rename(dir, archive); err != nil {
+		return fmt.Errorf("archiving failed: %w (initiative left at %s; re-run teardown)", err, dir)
 	}
 	if plan.ReadCurrent(in.RepoDir()) == in.Name {
 		if err := plan.SetCurrent(in.RepoDir(), ""); err != nil {
 			return err
 		}
 	}
-	a.out("archived %s → %s · removed %d worktree(s) · current cleared", in.Name, archive, len(wts))
+	a.out("archived %s → %s/ · removed %d worktree(s) · current cleared", in.Name, archive, len(wts))
 	return nil
 }
