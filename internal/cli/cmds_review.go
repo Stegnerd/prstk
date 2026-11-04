@@ -101,7 +101,8 @@ func cmdReview(a *App, o reviewOpts) error {
 	posted := p.PRNumber
 	post := p.PRNumber > 0 && !o.noPost
 	if post {
-		if err := a.GH.Review(in.Meta.Repo, p.PRNumber, body); err != nil {
+		posting := strings.TrimRight(body, " \t\r\n") + "\n\n" + plan.DirectorMarker + "\n"
+		if err := a.GH.Review(in.Meta.Repo, p.PRNumber, posting); err != nil {
 			return fmt.Errorf("posting review to #%d failed (nothing recorded): %w", p.PRNumber, err)
 		}
 	}

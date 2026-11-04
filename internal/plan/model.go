@@ -296,6 +296,9 @@ type Config struct {
 	MaxWorkers  int    `yaml:"max_workers"`
 	Setup       string `yaml:"setup"`
 	Reviewer    string `yaml:"reviewer"` // human reviewer's name; "" means "Human"
+	// Check is the shell commands prstk check runs (default for Go repos:
+	// go vet, gofmt -l, go test).
+	Check []string `yaml:"check"`
 }
 
 // DefaultReviewer is the human reviewer's name when config.yaml sets none.

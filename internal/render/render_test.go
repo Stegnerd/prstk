@@ -47,9 +47,9 @@ func TestStackNavMatchesSpec(t *testing.T) {
 	want := `**Stack** (pokemon-api)
 - #101 01 scaffold ✅ merged
 - #102 02 db layer
-  - **#103 03 read endpoints ← this PR**
-    - #105 05 write endpoints
-  - #104 04 types endpoints
+  - **#103 03 read endpoints ← this PR** · ⏳ merge after #102
+    - #105 05 write endpoints · ⏳ merge after #103
+  - #104 04 types endpoints · ⏳ merge after #102
 - #106 06 middleware
 `
 	if got != want {

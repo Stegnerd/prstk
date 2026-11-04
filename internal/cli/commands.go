@@ -126,6 +126,27 @@ func (a *App) rootCmd() *cobra.Command {
 	c.MarkFlagRequired("file")
 	c.MarkFlagRequired("verdict")
 
+	var fb feedbackOpts
+	c = cmd("feedback <id>", "Record the human reviewer's feedback verbatim in the spec (from GitHub or a file) and log it", 1, func(args []string) error {
+		fb.id = args[0]
+		return cmdFeedback(a, fb)
+	})
+	c.Flags().BoolVar(&fb.fromGH, "from-gh", false, "import new reviews and comments from the PR on GitHub")
+	c.Flags().StringVar(&fb.file, "file", "", "feedback text `path` (feedback given in chat)")
+	c.Flags().StringVar(&fb.author, "author", "", "with --from-gh: only this GitHub `login`")
+
+	var checkCmds []string
+	c = cmd("check <id>", "Merge the latest base into a throwaway copy of the PR branch and run the checks", 1, func(args []string) error {
+		return cmdCheck(a, args[0], checkCmds)
+	})
+	c.Flags().StringArrayVar(&checkCmds, "cmd", nil, "check command to run instead of config.yaml check (repeatable)")
+
+	var spawnWorker string
+	c = cmd("spawn-prompt <id>", "Print the prompt for spawning the PR's worker", 1, func(args []string) error {
+		return cmdSpawnPrompt(a, args[0], spawnWorker)
+	})
+	c.Flags().StringVar(&spawnWorker, "worker", "", "teammate name (default: the assigned worker)")
+
 	// ---- board / maintenance ----
 	var serve bool
 	var port int
