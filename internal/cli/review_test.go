@@ -98,7 +98,7 @@ func TestReviewRounds(t *testing.T) {
 	}
 
 	if n := len(e.gh.Reviews); n != 2 || e.gh.Reviews[0].Kind != "review" || e.gh.Reviews[0].N != 101 ||
-		e.gh.Reviews[0].Repo != "dalton/sample_proj" || e.gh.Reviews[0].Body != "# Review\n\nTests are missing for the parser.\n\n- fix it\n" {
+		e.gh.Reviews[0].Repo != "dalton/sample_proj" || e.gh.Reviews[0].Body != "# Review\n\nTests are missing for the parser.\n\n- fix it\n\n<!-- prstk:director -->\n" {
 		t.Fatalf("gh reviews: %+v", e.gh.Reviews)
 	}
 	got := e.readFile(spec)

@@ -188,10 +188,30 @@ func StackNav(in *plan.Initiative, thisID string) string {
 		}
 		if p.Status == plan.Merged {
 			item += " ✅ merged"
+		} else if after := MergeAfter(in, p); after != "" {
+			item += " · ⏳ merge after " + after
 		}
 		fmt.Fprintf(&b, "%s- %s\n", strings.Repeat("  ", depth(p)), item)
 	}
 	return b.String()
+}
+
+// MergeAfter names what must merge before p can: its parent's PR ("#102"),
+// or the parent's id when it has no PR yet. It is "" when p is merged or
+// abandoned, or its parent is merged or missing. Merging p first would land
+// it in the parent's branch instead of the base branch.
+func MergeAfter(in *plan.Initiative, p *plan.Spec) string {
+	if p.Status == plan.Merged || p.Status == plan.Abandoned {
+		return ""
+	}
+	par := in.PR(p.Parent)
+	if par == nil || par.Status == plan.Merged || par.Status == plan.Abandoned {
+		return ""
+	}
+	if par.PRNumber > 0 {
+		return fmt.Sprintf("#%d", par.PRNumber)
+	}
+	return par.ID
 }
 
 // PRBody builds a new PR body from the notes Description plus stack nav.
