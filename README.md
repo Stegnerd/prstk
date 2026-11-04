@@ -4,6 +4,8 @@ Break one task into a **stack of GitHub PRs** and build them in parallel with Cl
 
 `prstk` is a Go CLI that does every deterministic mechanic: worktrees, branches, draft PRs, stack navigation, scheduling, retargeting and archiving. A **director** agent does the judgment work: planning, specs and reviews. **Worker** agents write the code, one PR each, in their own git worktrees. You review and merge.
 
+![The live board for a three-PR stack: status columns across the top, the stack tree below](docs/images/board.png)
+
 ```text
             you (human)
               │  base branch, review feedback, "merged #N"
@@ -154,6 +156,22 @@ prstk board --serve          # http://127.0.0.1:7777  (--port to change)
 - **Log:** every LOG.md entry, filterable by type and PR.
 
 The board updates live as the files change. If port 7777 is taken, an old board is probably still running. Find it with `lsof -nP -iTCP:7777 -sTCP:LISTEN` and stop it.
+
+**Index:** active initiatives and the archive.
+
+![Board index listing one active initiative and two archived ones](docs/images/board-index.png)
+
+**PR page:** the spec, with status, branch and model at the top.
+
+![PR page showing the spec's Goal, Scope, Owns and Provides sections](docs/images/pr-page-spec.png)
+
+Further down the same page: the director's review rounds, your feedback, and the worker's `notes.md`.
+
+![PR page showing a director review round, the empty human-feedback section, and worker notes](docs/images/pr-page-review.png)
+
+**Log:** every mechanic and decision, with timestamps.
+
+![Log entries for add, assign, replan, open, review, ready and merged](docs/images/log.png)
 
 ### Your part
 
