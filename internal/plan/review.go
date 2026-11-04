@@ -34,15 +34,27 @@ func isHumanReviewHeading(line string) bool {
 // Headings of level 1-3 inside body are demoted to level 4 so they can't
 // split the section or be miscounted as rounds.
 func (s *Spec) AppendDirectorRound(date time.Time, verdict, body string) (int, error) {
+	var round int
+	err := s.rewriteBody(func(old string) string {
+		var nb string
+		nb, round = insertDirectorRound(old, date, verdict, body)
+		return nb
+	})
+	return round, err
+}
+
+// rewriteBody replaces the spec body with edit(body) on disk, keeping the
+// frontmatter bytes as they are.
+func (s *Spec) rewriteBody(edit func(body string) string) error {
 	raw, err := os.ReadFile(s.SpecPath())
 	if err != nil {
-		return 0, err
+		return err
 	}
 	doc, err := ParseDoc(s.SpecPath(), raw)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	newBody, round := insertDirectorRound(doc.Body, date, verdict, body)
+	newBody := edit(doc.Body)
 
 	var out []byte
 	if rest, ok := strings.CutSuffix(string(raw), doc.Body); ok {
@@ -50,14 +62,74 @@ func (s *Spec) AppendDirectorRound(date time.Time, verdict, body string) (int, e
 	} else { // CRLF file: fall back to a normalized rewrite
 		doc.Body = newBody
 		if out, err = doc.Bytes(); err != nil {
-			return 0, err
+			return err
 		}
 	}
 	if err := WriteFileAtomic(s.SpecPath(), out); err != nil {
-		return 0, err
+		return err
 	}
 	s.doc = &Doc{Path: doc.Path, node: doc.node, Body: newBody}
-	return round, nil
+	return nil
+}
+
+// DirectorMarker is appended to reviews prstk posts, so importing feedback
+// from GitHub can skip them (the director posts as the same GitHub user).
+const DirectorMarker = "<!-- prstk:director -->"
+
+// FeedbackMarker tags an imported GitHub item so it is imported only once.
+func FeedbackMarker(kind string, id int64) string {
+	return fmt.Sprintf("<!-- prstk:gh:%s:%d -->", kind, id)
+}
+
+// AppendReviewerFeedback adds "### <title>" plus body as the last item under
+// the human reviewer's "## Review: <name>" section, creating
+// "## Review: <name>" at the end of the file when there is none. Headings of
+// level 1-3 in body are demoted to level 4; the text is otherwise unchanged.
+func (s *Spec) AppendReviewerFeedback(name, title, body string) error {
+	return s.rewriteBody(func(old string) string {
+		return insertReviewerFeedback(old, name, title, body)
+	})
+}
+
+func insertReviewerFeedback(doc, name, title, body string) string {
+	lines := strings.Split(doc, "\n")
+	start, end := -1, len(lines)
+	fenced := false
+	for i, l := range lines {
+		if isFence(l) {
+			fenced = !fenced
+			continue
+		}
+		if fenced {
+			continue
+		}
+		if start < 0 && isHumanReviewHeading(l) {
+			start = i
+		} else if start >= 0 && strings.HasPrefix(l, "## ") {
+			end = i
+			break
+		}
+	}
+	body = strings.TrimRight(demoteHeadings(strings.ReplaceAll(body, "\r\n", "\n")), " \t\r\n")
+	var head, tail []string
+	if start < 0 {
+		head = append(append([]string{}, lines...), "", reviewPrefix+name)
+	} else {
+		head = append([]string{}, lines[:end]...)
+		tail = lines[end:]
+	}
+	for len(head) > 0 && strings.TrimSpace(head[len(head)-1]) == "" {
+		head = head[:len(head)-1]
+	}
+	out := append(head, "", "### "+title, "")
+	if body != "" {
+		out = append(out, strings.Split(body, "\n")...)
+	}
+	rest := strings.TrimLeft(strings.Join(tail, "\n"), "\n")
+	if rest == "" {
+		return strings.TrimLeft(strings.Join(out, "\n"), "\n") + "\n"
+	}
+	return strings.Join(out, "\n") + "\n\n" + rest
 }
 
 func isFence(line string) bool {

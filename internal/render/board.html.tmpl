@@ -203,6 +203,7 @@ window.PRSTK = {{.Config}};
         c.opus ? h("span", { class: "badge" }, "Opus") : null,
         c.blocked ? h("span", { class: "badge blocked", title: c.reason }, "blocked") : null,
         c.tag && !c.blocked ? h("span", { class: "badge tag", title: c.reason }, c.tag) : null,
+        c.merge_after && c.column === "Awaiting You" ? h("span", { class: "badge tag", title: "merging this first would land it in the parent's branch, not the base branch" }, "merge after " + c.merge_after) : null,
         next.includes(c.id) ? h("span", { class: "badge next" }, "next") : null));
   }
 
@@ -310,6 +311,7 @@ window.PRSTK = {{.Config}};
     const facts = h("dl", { class: "facts" },
       fact("status", d.status, d.tag ? [" ", h("span", { class: "badge tag" }, d.tag)] : null, " · ", since(d.since)),
       d.blocked || d.reason ? fact("reason", d.reason) : null,
+      d.merge_after ? fact("merge after", d.merge_after) : null,
       fact("parent", d.parent ? prLink(d.parent) : "base branch"),
       fact("branch", d.branch || "—"),
       fact("worker", d.worker || "—"),

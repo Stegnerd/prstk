@@ -114,7 +114,12 @@ default_base: develop       # base branch when init has no --base
 max_workers: 2              # parallel worker slots
 setup: "test -f go.mod && go mod download || true"   # run in each new worktree
 reviewer: <your name>       # name in the "## Review: <name>" heading; default "Human"
+check:                      # what `prstk check` runs; default for Go repos:
+  - go vet ./...            #   go vet, gofmt -l, go test
+  - go test ./...
 ```
+
+`check` lists the shell commands the director's `prstk check` runs on each finished PR. Leave it out in a Go repo to get `go vet ./...`, a `gofmt -l` check and `go test ./...`.
 
 `reviewer` is the name of the human who reviews and merges. The director copies your feedback word for word into a `## Review: <name>` section of the PR's spec, using this name. If you leave it out, the heading is `## Review: Human`. Specs written earlier with another name (for example `## Review: Dalton`) keep working.
 
@@ -178,10 +183,16 @@ Further down the same page: the director's review rounds, your feedback, and the
 You only ever do three things:
 
 1. **Answer the director's questions**, such as the base branch or a scope decision.
-2. **Review PRs** the director marks ready, the ones showing `awaiting-you` on the board. Give feedback in chat; the director records it word for word and assigns a fresh worker to fix it.
-3. **Merge on GitHub**, then tell the director `merged #N`.
+2. **Review PRs** the director marks ready, the ones showing `awaiting-you` on the board. Either comment on the PR in GitHub and tell the director `check #N`, or give feedback in chat, starting it with `fix #N:` so it isn't mistaken for a question. The director records it word for word (`prstk feedback`) and assigns a fresh worker to fix it.
+3. **Merge on GitHub**, then tell the director `merged #N`, one PR at a time.
 
 Merge with a **merge commit**, not a squash. Children are built on the parent's commits, so a squash makes them carry duplicate history.
+
+Merge **parents first**. A PR whose parent is still open shows `⏳ merge after #N` in its stack navigation and on its board card; merging it early lands it in the parent's branch instead of the base. Turning on **Settings → General → Automatically delete head branches** makes GitHub retarget children to the base when their parent merges:
+
+```sh
+gh repo edit <owner>/<repo> --delete-branch-on-merge
+```
 
 ---
 
@@ -202,9 +213,9 @@ Merge with a **merge commit**, not a squash. Children are built on the parent's 
    - `Definition of done`
 
    It runs `prstk validate` until the plan is clean.
-2. **Assign.** `prstk next` lists what can start now, given free slots, parents, conflicts and critical path. For each line, the director runs `prstk assign <id> --worker <name>`, which creates the worktree and branch, then spawns a `prstk-worker` teammate with the absolute paths.
+2. **Assign.** `prstk next` lists what can start now, given free slots, parents, conflicts and critical path. For each line, the director runs `prstk assign <id> --worker <name>`, which creates the worktree and branch, then spawns a `prstk-worker` teammate using the prompt from `prstk spawn-prompt <id>` (name, model, absolute paths and, for a fix, the reason).
 3. **Build.** The worker stays inside its worktree and its `Owns` list, commits, fills `notes.md` (Description becomes the PR body; Worker notes is the handoff), and sends **one** done message.
-4. **Verify.** The director re-runs the definition of done itself. If the PR shares a Go package with sibling PRs, it trial-merges the current base in a **throwaway** worktree, never the worker's own.
+4. **Verify.** The director runs `prstk check <id>`: in a **throwaway** worktree (never the worker's own) it merges the PR's latest base into the branch and runs the `check` commands (vet, gofmt and tests by default for Go).
 5. **Open.** `prstk open <id>` pushes the branch and opens a **draft** PR with stack navigation.
 6. **Review.** The director reads `gh pr diff`, writes its findings to a file, and runs:
    ```sh
@@ -212,10 +223,10 @@ Merge with a **merge commit**, not a squash. Children are built on the parent's 
    ```
    That posts a comment review to the PR, adds `### Round N` to the spec and writes the LOG entry, all in one step.
    - Changes needed: `prstk status <id> changes-requested`, message the worker, then re-open and re-review.
-   - Approved: `prstk ready <id>` flips the draft to ready and frees the slot. Then the director messages the worker and **stops it with `TaskStop`**, because workers can't exit on their own.
-7. **Your feedback.** The director copies it word for word into `## Review: <reviewer>` (the `reviewer` name from `config.yaml`, default `Human`), runs `prstk status <id> fix-pending` and `prstk log feedback "…"`, and a **fresh** worker fixes it.
+   - Approved: `prstk ready <id>` flips the draft to ready and frees the slot, and reminds the director to **stop the worker with `TaskStop`**, because workers can't exit on their own.
+7. **Your feedback.** `prstk feedback <id> --from-gh` imports your GitHub reviews and comments (with file:line) word for word into `## Review: <reviewer>` (the `reviewer` name from `config.yaml`, default `Human`) and logs it. Chat feedback goes in with `--file`. Then `prstk status <id> fix-pending`, and a **fresh** worker fixes it.
 8. **Propagate.** When a PR that has children gets new commits, `prstk propagate <id>` merges it down the stack. Conflicted children become `fix-pending`.
-9. **Merged.** You say `merged #N`, and `prstk merged <id>` verifies it on GitHub, retargets the children to the base branch, updates the stack navigation and removes the worktree.
+9. **Merged.** You say `merged #N`, and `prstk merged <id>` verifies it on GitHub, retargets the children to the base branch, updates the stack navigation and removes the worktree. If a child was merged into its parent's branch, it tells you whether the parent carried it to the base or its changes were left behind.
 10. **Teardown.** When every PR is `merged` or `abandoned`, `prstk teardown` moves the whole initiative to `_archive/<name>/` and clears `current`.
 
 Decisions such as re-plans, feedback and reviews are recorded with `prstk log <type> "…"` or `prstk review`, never typed into LOG.md by hand. prstk stamps the real time.
@@ -245,8 +256,11 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 | `next` | What to assign now |
 | `show <id> [--json]` | A PR's frontmatter and paths |
 | `assign <id> --worker <name>` | Create the worktree and branch; mark in-progress |
+| `spawn-prompt <id> [--worker]` | Print the worker's spawn prompt |
+| `check <id> [--cmd …]` | Merge the latest base into a throwaway copy and run the checks |
 | `open <id>` | Push and open a draft PR (or re-enter director review) |
 | `review <id> --file f --verdict v [--summary] [--no-post]` | Post the review, record the round, log it |
+| `feedback <id> --from-gh [--author] \| --file f` | Record your feedback verbatim in the spec, and log it |
 | `log review\|feedback\|replan "…" [--file f]` | Timestamped director LOG entry |
 | `status <id> <status> [--reason]` | Statuses without a dedicated command |
 | `ready <id>` | Mark the draft ready; release the worker |
@@ -282,6 +296,7 @@ Each file region has exactly one writer:
 | spec frontmatter and generated blocks | prstk |
 | PLAN sections and spec bodies | the director |
 | `### Round N` review items | `prstk review` |
+| `## Review: <reviewer>` entries | `prstk feedback` |
 | `notes.md` | the worker |
 
 ---
@@ -291,11 +306,9 @@ Each file region has exactly one writer:
 - **Board security:** add a Content-Security-Policy header, and an SRI hash on the Mermaid script tag.
 - **Index refresh:** refresh an open index when an archive appears by any route other than teardown.
 - **Teardown:** close the small lock race just before the final rename, and make the "re-run teardown" message honest when the repo path can't be resolved.
-- **`prstk check <id>`:** trial merge, vet, tests and an Owns-vs-diff check in one call. Today this is done by hand before every open.
+- **`prstk check`:** add an Owns-vs-diff check.
 - **Other retro ideas:**
-  - `prstk spawn-prompt`, to generate worker prompts
   - `prstk set`, to change early-start, model or conflicts after `add`
-  - `prstk feedback`, to record your feedback
   - a warning on squash merges
   - a warning when sibling PRs share a Go package
 
