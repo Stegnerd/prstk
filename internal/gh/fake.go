@@ -13,6 +13,8 @@ type Fake struct {
 	Calls []string
 	// Reviews records every posted review/comment, in order.
 	Reviews []FakeReview
+	// FeedbackItems is what Feedback returns, per PR number.
+	FeedbackItems map[int][]FeedbackItem
 	// FailOn makes the named method return an error once (for idempotency tests).
 	FailOn map[string]bool
 }
@@ -31,7 +33,9 @@ type FakePR struct {
 	Head, Title string
 }
 
-func NewFake() *Fake { return &Fake{next: 100, PRs: map[int]*FakePR{}, FailOn: map[string]bool{}} }
+func NewFake() *Fake {
+	return &Fake{next: 100, PRs: map[int]*FakePR{}, FailOn: map[string]bool{}, FeedbackItems: map[int][]FeedbackItem{}}
+}
 
 func (f *Fake) fail(m string) error {
 	if f.FailOn[m] {
@@ -141,6 +145,19 @@ func (f *Fake) Review(repo string, n int, body string) error {
 	return nil
 }
 
+func (f *Fake) Feedback(repo string, n int) ([]FeedbackItem, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail("Feedback"); err != nil {
+		return nil, err
+	}
+	if _, err := f.get(n); err != nil {
+		return nil, err
+	}
+	f.Calls = append(f.Calls, fmt.Sprintf("feedback #%d", n))
+	return append([]FeedbackItem(nil), f.FeedbackItems[n]...), nil
+}
+
 func (f *Fake) AuthStatus() error { return nil }
 
 // Merge simulates the human reviewer merging a PR.
@@ -150,5 +167,15 @@ func (f *Fake) Merge(n int) {
 	if p, ok := f.PRs[n]; ok {
 		p.State = "MERGED"
 		p.MergedAt = "2026-11-03T20:00:00Z"
+	}
+}
+
+// MergeAt simulates a merge at an RFC 3339 time.
+func (f *Fake) MergeAt(n int, at string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.PRs[n]; ok {
+		p.State = "MERGED"
+		p.MergedAt = at
 	}
 }

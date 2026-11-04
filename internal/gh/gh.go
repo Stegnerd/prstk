@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -35,7 +36,23 @@ type Client interface {
 	// Review posts body as a comment review on PR n, falling back to a plain
 	// PR comment if the review is refused (e.g. reviewing your own PR).
 	Review(repo string, n int, body string) error
+	// Feedback lists PR n's reviews, inline review comments and conversation
+	// comments, oldest first.
+	Feedback(repo string, n int) ([]FeedbackItem, error)
 	AuthStatus() error
+}
+
+// FeedbackItem is one piece of human feedback on a PR.
+type FeedbackItem struct {
+	Kind    string // "review", "inline" or "comment"
+	ID      int64
+	Author  string
+	Body    string
+	State   string // reviews: APPROVED, CHANGES_REQUESTED, COMMENTED, …
+	Path    string // inline: file
+	Line    int    // inline: line (0 when outdated)
+	At      string // RFC 3339
+	ReplyTo int64  // inline: the comment this replies to
 }
 
 type Logger func(format string, args ...any)
@@ -131,6 +148,75 @@ func (e Exec) Review(repo string, n int, body string) error {
 	// Falls back on any error, so it can double-post if the review actually landed.
 	_, err := e.run(body, "pr", "comment", num, "-R", repo, "--body-file", "-")
 	return err
+}
+
+// apiList GETs a paginated list endpoint and decodes every page into out.
+func apiList[T any](e Exec, path string) ([]T, error) {
+	out, err := e.run("", "api", "--paginate", path)
+	if err != nil {
+		return nil, err
+	}
+	// --paginate prints one JSON array per page, back to back.
+	var all []T
+	dec := json.NewDecoder(strings.NewReader(out))
+	for dec.More() {
+		var page []T
+		if err := dec.Decode(&page); err != nil {
+			return nil, fmt.Errorf("gh api %s: %w", path, err)
+		}
+		all = append(all, page...)
+	}
+	return all, nil
+}
+
+type ghUser struct {
+	Login string `json:"login"`
+}
+
+func (e Exec) Feedback(repo string, n int) ([]FeedbackItem, error) {
+	var items []FeedbackItem
+	reviews, err := apiList[struct {
+		ID          int64  `json:"id"`
+		User        ghUser `json:"user"`
+		Body        string `json:"body"`
+		State       string `json:"state"`
+		SubmittedAt string `json:"submitted_at"`
+	}](e, fmt.Sprintf("repos/%s/pulls/%d/reviews", repo, n))
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range reviews {
+		items = append(items, FeedbackItem{Kind: "review", ID: r.ID, Author: r.User.Login, Body: r.Body, State: r.State, At: r.SubmittedAt})
+	}
+	inline, err := apiList[struct {
+		ID        int64  `json:"id"`
+		User      ghUser `json:"user"`
+		Body      string `json:"body"`
+		Path      string `json:"path"`
+		Line      int    `json:"line"`
+		CreatedAt string `json:"created_at"`
+		ReplyTo   int64  `json:"in_reply_to_id"`
+	}](e, fmt.Sprintf("repos/%s/pulls/%d/comments", repo, n))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range inline {
+		items = append(items, FeedbackItem{Kind: "inline", ID: c.ID, Author: c.User.Login, Body: c.Body, Path: c.Path, Line: c.Line, At: c.CreatedAt, ReplyTo: c.ReplyTo})
+	}
+	comments, err := apiList[struct {
+		ID        int64  `json:"id"`
+		User      ghUser `json:"user"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+	}](e, fmt.Sprintf("repos/%s/issues/%d/comments", repo, n))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range comments {
+		items = append(items, FeedbackItem{Kind: "comment", ID: c.ID, Author: c.User.Login, Body: c.Body, At: c.CreatedAt})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].At < items[j].At })
+	return items, nil
 }
 
 func (e Exec) AuthStatus() error {

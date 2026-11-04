@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/Stegnerd/prstk/internal/gh"
 	"github.com/Stegnerd/prstk/internal/plan"
@@ -94,7 +95,10 @@ func cmdAssign(a *App, id, worker string, ignoreConflicts bool) error {
 		}
 		now := a.Now()
 		p.SetStatus(target, now)
-		p.Worker, p.BlockedReason, p.BlockedFrom = worker, "", ""
+		p.Worker, p.BlockedFrom = worker, ""
+		if target != plan.Fixing {
+			p.BlockedReason = "" // a fix keeps why it exists, for spawn-prompt
+		}
 		if err := p.Save(); err != nil {
 			return "", err
 		}
@@ -292,7 +296,11 @@ func cmdReady(a *App, id string) error {
 		if err := in.AppendLog(now, "ready", fmt.Sprintf("%s #%d ready for review; %s released", id, p.PRNumber, orDash(worker))); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s #%d ready for review · awaiting-you · released %s", id, p.PRNumber, orDash(worker)), nil
+		msg := fmt.Sprintf("%s #%d ready for review · awaiting-you · released %s", id, p.PRNumber, orDash(worker))
+		if worker != "" {
+			msg += fmt.Sprintf(" · stop teammate %s now (TaskStop)", worker)
+		}
+		return msg, nil
 	})
 }
 
@@ -386,15 +394,38 @@ func cmdMerged(a *App, id string) error {
 		if p.PRNumber <= 0 {
 			return "", fmt.Errorf("%s has no PR", id)
 		}
-		if par := in.PR(p.Parent); par != nil && par.Status != plan.Merged {
-			return "", fmt.Errorf("parent %s isn't merged yet (%s); merge bottom-up", par.ID, par.Status)
-		}
 		info, err := a.GH.View(in.Meta.Repo, p.PRNumber)
 		if err != nil {
 			return "", err
 		}
+		par := in.PR(p.Parent)
+		if par != nil && par.Status != plan.Merged {
+			if info.State == "MERGED" && info.BaseRef != "" && info.BaseRef != in.Meta.BaseBranch {
+				return "", fmt.Errorf("#%d was merged into %s (parent %s's branch), not %s; its changes reach %s when %s merges. Run merged %s first, then merged %s",
+					p.PRNumber, info.BaseRef, par.ID, in.Meta.BaseBranch, in.Meta.BaseBranch, prRef(par), par.ID, id)
+			}
+			return "", fmt.Errorf("parent %s isn't merged yet (%s); merge bottom-up", par.ID, par.Status)
+		}
 		if info.State != "MERGED" || info.MergedAt == "" {
 			return "", fmt.Errorf("#%d is not merged on GitHub (state %s)", p.PRNumber, info.State)
+		}
+		// A child merged into its parent's branch (not the base) reaches the
+		// base only if the parent merged afterwards.
+		var landWarn error
+		landNote := ""
+		if info.BaseRef != "" && info.BaseRef != in.Meta.BaseBranch && p.Status != plan.Merged {
+			carried := false
+			if par != nil && par.PRNumber > 0 {
+				if pi, err := a.GH.View(in.Meta.Repo, par.PRNumber); err == nil && pi.MergedAt != "" && mergedNotAfter(info.MergedAt, pi.MergedAt) {
+					carried = true
+				}
+			}
+			if carried {
+				landNote = fmt.Sprintf("merged into %s, carried to %s by #%d", info.BaseRef, in.Meta.BaseBranch, par.PRNumber)
+			} else {
+				landWarn = fmt.Errorf("⚠ #%d was merged into %s, not %s, and nothing carried it over: its changes are NOT in %s. Open a new PR from %s to %s",
+					p.PRNumber, info.BaseRef, in.Meta.BaseBranch, in.Meta.BaseBranch, info.BaseRef, in.Meta.BaseBranch)
+			}
 		}
 		now := a.Now()
 		first := p.Status != plan.Merged
@@ -404,6 +435,12 @@ func cmdMerged(a *App, id string) error {
 			return "", err
 		}
 		parts := []string{fmt.Sprintf("merged %s (#%d)", id, p.PRNumber)}
+		if landNote != "" {
+			parts = append(parts, landNote)
+		}
+		if landWarn != nil {
+			parts = append(parts, landWarn.Error())
+		}
 		var retargeted []string
 		for _, c := range in.Children(id) {
 			if c.PRNumber <= 0 || c.Status == plan.Merged || c.Status == plan.Abandoned {
@@ -447,8 +484,31 @@ func cmdMerged(a *App, id string) error {
 			}
 			parts = append(parts, "worktree removed")
 		}
-		return strings.Join(parts, " · "), nil
+		msg := strings.Join(parts, " · ")
+		if landWarn != nil {
+			a.out("%s", msg) // the record succeeded; the error is the warning
+		}
+		return msg, landWarn
 	})
+}
+
+// prRef is "#N" for a PR with a number, otherwise its id.
+func prRef(p *plan.Spec) string {
+	if p.PRNumber > 0 {
+		return fmt.Sprintf("#%d", p.PRNumber)
+	}
+	return p.ID
+}
+
+// mergedNotAfter reports whether RFC 3339 time a is at or before b.
+// Unparseable times count as not-before, so the caller warns.
+func mergedNotAfter(a, b string) bool {
+	ta, err1 := time.Parse(time.RFC3339, a)
+	tb, err2 := time.Parse(time.RFC3339, b)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return !ta.After(tb)
 }
 
 func ghCreate(base string, p *plan.Spec, body string) gh.CreateArgs {
