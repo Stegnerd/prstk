@@ -54,7 +54,7 @@ Everything below uses PR `03` as the example. Run `prstk` from the PR's worktree
 
    A `video` PR needs a before video (the `--video` run, or the `.webm` from vhs). A `screenshots` PR needs at least one before capture.
 4. Build the change. The director's `prstk open` is refused until before evidence exists (unless it passes `--skip-evidence`).
-5. **After the director approves**, from the same untouched, pushed HEAD, run the same script with the phase switched, and record it with the **same step numbers**:
+5. **After the director approves**, from the approved, pushed HEAD (the same commit the director reviewed), run the same script with the phase switched, and record it with the **same step numbers**:
 
    ```sh
    node capture.mjs --base-url http://localhost:3000 --out ./out --phase after [--video]
