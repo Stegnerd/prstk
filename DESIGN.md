@@ -44,7 +44,7 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
       2026-11-01-0900-older.md       # legacy single-file archive (pre-dir teardown; left as is)
       2026-11-03-1415-pokemon-api/   # whole initiative dir, moved here at teardown
         PLAN.md  LOG.md  board.html  # final; LOG ends with the teardown entry
-        prs/<id>-<slug>/spec.md, notes.md
+        prs/<id>-<slug>/spec.md, notes.md, evidence/   # evidence moves with the initiative
     2026-11-03-1415-pokemon-api/     # one initiative
       PLAN.md
       LOG.md
@@ -58,6 +58,10 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
         02-db-layer/
           spec.md
           notes.md
+          evidence/                  # only for a PR with audit evidence (§4)
+            evidence.json            # manifest, written by prstk only
+            before/  after/          # captures, stored under sanitized names
+            script/                  # the capture script, for re-running it
       worktrees/
         01/                          # git worktree for PR 01
         02/
@@ -66,7 +70,7 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 - Repo key is `<owner>-<repo>` from the `origin` remote URL, not the folder name.
 - Initiative dir name: `YYYY-MM-DD-HHMM-<slug>` (local time), so it sorts chronologically.
 - Worktrees live inside the initiative so teardown removes everything together.
-- At teardown the initiative dir is moved (one `rename`) to `_archive/<initiative>/`, minus `worktrees/`, `.lock` and `.prstk.log`. It stays loadable as an initiative. Legacy `_archive/<initiative>.md` files from older versions sit alongside and are never modified.
+- At teardown the initiative dir is moved (one `rename`) to `_archive/<initiative>/`, minus `worktrees/`, `.lock` and `.prstk.log`. It stays loadable as an initiative, and each PR's `evidence/` goes with it, so the board still shows the captures. Legacy `_archive/<initiative>.md` files from older versions sit alongside and are never modified.
 
 ---
 
@@ -82,8 +86,9 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 | `prs/*/spec.md` frontmatter | `prstk` (and director at creation via `prstk add`) | All |
 | `prs/*/spec.md` body | Director (`### Round N` items inside `## Review: Director` are written by `prstk review`) | Worker, director |
 | `prs/*/notes.md` | Assigned worker only | Director, downstream workers |
+| `prs/*/evidence/` (`evidence.json`, `before/`, `after/`, `script/`) | `prstk` only, via `prstk evidence` (workers run the command; nobody edits the files by hand) | Board, reviewer, director |
 
-No two writers share a file region. `prstk` touches frontmatter and marker-delimited generated blocks, and appends `### Round N` items as the last item in `## Review: Director` (via `prstk review`) and entries to the end of `LOG.md`. It never edits anything else in a spec body.
+No two writers share a file region. `prstk` touches frontmatter, the `evidence/` directories and marker-delimited generated blocks, and appends `### Round N` items as the last item in `## Review: Director` (via `prstk review`) and entries to the end of `LOG.md`. It never edits anything else in a spec body.
 
 ### `PLAN.md`
 
@@ -116,7 +121,8 @@ Append-only. One entry per event:
 Split 02 into 02a/02b. Auth turned out to be its own concern; 03 now stacks on 02b.
 ```
 
-Entry types: `init`, `add`, `assign`, `open`, `review`, `feedback`, `ready`, `propagate`, `merged`, `replan`, `blocked`, `teardown`.
+Entry types: `init`, `add`, `assign`, `open`, `review`, `feedback`, `ready`, `propagate`, `merged`, `replan`, `blocked`, `evidence`, `teardown`.
+The `evidence` entries are `<id> <phase> step <n> <kind> <file> @ <short sha>` for a capture, `<id> script <name>` for a registered script, and `<id> gate skipped at <open|ready>: <reason>` for a bypassed gate.
 `prstk` writes mechanical entries as one line. The director's `review`, `feedback`, and `replan` entries (with reasoning, possibly multi-line) are also written by `prstk`, through `prstk review` and `prstk log`, so the timestamp is always real and the author is `director`.
 
 ### `prs/<id>-<slug>/spec.md`
@@ -133,6 +139,7 @@ status_since: 2026-11-03T14:22:00-05:00
 blocked_reason: ""
 early_start: false         # director may allow start before parent passes review
 model: sonnet              # sonnet | opus
+evidence: ""               # "" | screenshots | video: audit evidence required (see below)
 worker: ""                 # teammate name while assigned
 branch: prstk/pokemon-api/03-list-endpoint
 pr_number: 0
@@ -147,6 +154,7 @@ Body sections (director-written):
 - `## Provides` — interface this PR exposes to children
 - `## Consumes` — interface it relies on from its parent
 - `## Definition of done` — tests pass, lint clean, notes filled, etc.
+- `## Evidence` — only for a PR with an `evidence` level (`prstk add --evidence …` seeds it). Numbered steps: what to open or run, what state to reach, which steps need video, and how to start the app from the worktree. Sits between `## Definition of done` and `## Review: Director`.
 - `## Review: Director` — director's review findings per round
 - `## Review: <reviewer>` — the human reviewer's feedback, copied in word for word by the director **before** a fix worker is spawned. `<reviewer>` is the `reviewer` value from `config.yaml` (default `Human`). Any `## Review:` heading whose name isn't `Director` is read as this section, so older specs that say `## Review: Dalton` still work.
 
@@ -156,6 +164,38 @@ Worker-written. Must be good enough for a cold-start successor.
 
 - `## Description` — becomes the PR body
 - `## Worker notes` — decisions made, surprises, gotchas, anything downstream PRs should know
+
+### Audit evidence
+
+Optional proof that a user-visible change works: screenshots (or video) of the same steps **before** the change and **after** it, shown side by side on the board. A PR opts in with `evidence: screenshots|video` in its spec (`prstk add … --evidence`). `video` means a multi-step flow: it also needs a before and an after video. prstk records and gates; it never captures. The worker captures with Playwright (browser) or vhs (terminal), using the templates in [`docs/evidence/`](docs/evidence/README.md).
+
+`prs/<id>-<slug>/evidence/` holds `evidence.json`, `before/`, `after/` and `script/`. `evidence.json` is written only by prstk:
+
+```json
+{
+  "script": "playwright-capture.mjs",
+  "items": [
+    {"phase": "before", "step": 1, "file": "before-step-1-home.png", "kind": "image",
+     "caption": "Home page", "commit": "<full sha>", "captured_at": "2026-11-04T21:18:00Z"}
+  ]
+}
+```
+
+- `items` is append-only. A before and an after with the same `step` form a pair. A later after for a step supersedes the earlier one, which the board keeps as an "earlier capture".
+- `commit` is the worktree HEAD at capture time. It is how the ready gate tells a current after from a stale one.
+- Accepted: `.png .jpg .jpeg .webp .gif` (image) and `.webm .mp4` (video), at most 200 MiB each; scripts `.mjs .js .ts .tape`, at most 1 MiB. Stored names are lowercased and sanitized, and made unique within the phase.
+
+**Timing rules** (`prstk evidence add`):
+
+- **before**: only on an `in-progress` PR whose worktree is untouched: no tracked changes and no commits beyond the branch's start point (`origin/<base>`, or the parent branch for a stacked PR). That is what makes it *before*.
+- **after**: only in `director-review` once the latest director round is `approved`, with no uncommitted tracked changes, and with the worktree HEAD equal to `origin/<branch>` (the pushed code the director reviewed). Without `--step` it takes the lowest before step with no after at HEAD.
+
+**Gates** (only when the PR has an evidence level; each takes `--skip-evidence "<reason>"`, which is logged and only does anything when the gate would have refused):
+
+- `prstk open`: needs a before capture (a before video for `video`). A refused open changes nothing.
+- `prstk ready`: needs, at the worktree HEAD, an after for every before step, **at least one after at HEAD even when the open gate was skipped**, and an after video for `video`. HEAD must also equal `origin/<branch>` (no fetch; if not, run `prstk open` and get it re-reviewed). New commits therefore make earlier afters stale, and the fix flow re-captures after the next approval.
+
+`prstk open` adds a line to a new PR's description saying it has audit evidence and pointing at the board. `prstk doctor` prints `playwright` (npx) and `vhs` lines when a live PR has evidence, and only warns when one is missing.
 
 ### `config.yaml` (per repo, optional)
 
@@ -194,11 +234,11 @@ Workers stay alive until **director review completes** (`prstk ready`). After th
 
 1. Director: `prstk init`, writes PLAN.md sections, `prstk add` for each PR, writes spec bodies, `prstk validate`.
 2. Director: `prstk next` → `prstk assign <id> --worker <name>` → spawns teammate pointed at the worktree and spec.
-3. Worker: implements in its worktree, commits, pushes its own branch, fills `notes.md`, messages director "done".
-4. Director: `prstk open <id>` → draft PR created.
+3. Worker: implements in its worktree, commits, pushes its own branch, fills `notes.md`, messages director "done". For a PR with audit evidence, the worker's first step, before any code change, is to capture and record the **before** evidence (`prstk evidence script` / `prstk evidence add --phase before`).
+4. Director: `prstk open <id>` → draft PR created. For an evidence PR the **open gate** needs the before capture.
 5. Director reviews (`gh pr diff`), posts findings as **comment reviews** on GitHub (approve/request-changes aren't possible on your own PRs) and in `## Review: Director`. If changes needed: `prstk status <id> changes-requested`, messages worker, loop.
-6. Director satisfied: `prstk ready <id>` → draft flipped to ready for review, worker released, slot freed.
-7. The reviewer reviews. Feedback goes to the director in chat. Director copies it into `## Review: <reviewer>`, runs `prstk status <id> fix-pending`, then assigns a fresh worker when `next` says so. After fixes, director re-reviews and runs `prstk ready` again.
+6. Director satisfied: `prstk review … --verdict approved`. For an evidence PR the worker now re-runs the same capture script on the approved HEAD and records the **after** evidence with the same step numbers (`prstk evidence add --phase after`); the director checks `prstk evidence ls`. Then `prstk ready <id>` (the **ready gate** needs an after at HEAD, at least one even if the open gate was skipped, and HEAD equal to `origin/<branch>`) → draft flipped to ready for review, worker released, slot freed.
+7. The reviewer reviews. Feedback goes to the director in chat. Director copies it into `## Review: <reviewer>`, runs `prstk status <id> fix-pending`, then assigns a fresh worker when `next` says so. After fixes, director re-reviews and runs `prstk ready` again (for an evidence PR, the afters are re-captured at the new HEAD first).
 8. If a PR with children receives new commits: `prstk propagate <id>`.
 9. The reviewer merges and tells the director "merged #N". Director runs `prstk merged <id>`.
 10. When everything is `merged` or `abandoned`: `prstk teardown`.
@@ -237,7 +277,7 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 
 ### Permissions (enforced by agent instructions, not by the CLI)
 
-- Workers may run: `prstk status <own-id> blocked --reason …`, `prstk status <own-id> in-progress` (unblock), `prstk validate`, `prstk show <id>`.
+- Workers may run: `prstk status <own-id> blocked --reason …`, `prstk status <own-id> in-progress` (unblock), `prstk validate`, `prstk show <id>`, and for a PR with audit evidence `prstk evidence script|add|ls <own-id>`.
 - Everything else is director-only.
 
 ### Commands
@@ -246,20 +286,23 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 |---|---|
 | `prstk init <slug> [--base <branch>]` | Creates initiative dir, PLAN.md skeleton, LOG.md; sets `current`. Base defaults to `config.default_base`, then `develop`. Fails if base branch doesn't exist on the remote. |
 | `prstk use <initiative>` | Sets `current`. |
-| `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <id,…>]` | Creates `prs/<id>-<slug>/spec.md` (frontmatter + empty body sections) and empty `notes.md`. Sets `branch`. Adds symmetric `conflicts_with`. |
+| `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <id,…>] [--evidence screenshots\|video]` | Creates `prs/<id>-<slug>/spec.md` (frontmatter + empty body sections) and empty `notes.md`. Sets `branch`. Adds symmetric `conflicts_with`. `--evidence` sets the spec's `evidence` level and seeds an `## Evidence` section (a placeholder, so `validate` warns until it's filled in); on an existing PR it only sets the level. |
 | `prstk validate` | Runs §9 checks, regenerates PLAN.md block + `board.html`. |
 | `prstk next` | §7. |
-| `prstk show <id>` | Prints frontmatter + paths (spec, notes, worktree). |
+| `prstk show <id>` | Prints frontmatter + paths (spec, notes, worktree). For an evidence PR also `evidence  <level> (<n> before / <m> after)` and `evidence_dir`. `--json` always carries `evidence` and `evidence_dir`. |
 | `prstk assign <id> --worker <name>` | Requires PR to be *ready* or `fix-pending` and a free slot. If no worktree: creates branch from parent branch (or base) and `git worktree add worktrees/<id>`, runs `config.setup`. Sets status `in-progress` (or `fixing` from `fix-pending`), sets `worker`. |
-| `prstk open <id>` | Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. |
+| `prstk open <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. A new PR's description gains a line noting its audit evidence. |
 | `prstk status <id> <status> [--reason "…"]` | Generic transition for statuses without a dedicated command. Validates transition legality. `blocked` requires `--reason`. |
-| `prstk ready <id>` | `gh pr ready`, sets `awaiting-you`, clears `worker`. |
+| `prstk ready <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). `gh pr ready`, sets `awaiting-you`, clears `worker`. |
+| `prstk evidence add <id> --phase before\|after --file <path> [--step N] [--caption "…"]` | Copies a capture (image or video) into the PR's `evidence/<phase>/`, records it in `evidence.json` with the worktree HEAD, and logs it. Enforces the before/after timing rules. Prints `<id> <phase> step <n>: <file> (<kind>) @ <short sha>`. |
+| `prstk evidence script <id> --file <path>` | Stores the capture script (`.mjs`, `.js`, `.ts`, `.tape`) in `evidence/script/` and sets it in the manifest, so the after run (and a fix worker) can repeat it. |
+| `prstk evidence ls <id> [--json]` | Prints `evidence: <level>`, `script: <name>`, then per step `before: <file> after: <file> [@sha, current\|stale]`. `--json` prints the level plus the manifest. |
 | `prstk review <id> --file <path> --verdict approved\|changes-requested [--summary "…"] [--no-post]` | If the PR is open (`pr_number > 0`) and not `--no-post`, posts the file as a comment review (`gh pr review --comment -R <repo>`, falling back to `gh pr comment`). Then appends `### Round N (date): <verdict>` to `## Review: Director` (suffixed ` (before PR opened)` when there's no PR) and a `review` LOG entry. Takes the lock for the writes; if both gh paths fail, writes nothing and exits 1. Does not change status. |
 | `prstk log <review\|feedback\|replan> [message…] [--file <path>]` | Appends a timestamped `director` entry to LOG.md. The message is the args or a (multi-line) file, not both. |
 | `prstk propagate <id>` | For each descendant in parent-first order: requires clean worktree, runs `git merge --no-ff <parent-branch>` in the child's worktree. Clean merge → push. Conflict → `git merge --abort`, set child `fix-pending` with reason listing conflicted files, skip that child's subtree, continue with others. Prints summary. |
 | `prstk merged <id>` | Verifies via `gh pr view --json state,mergedAt`. Sets `merged`. For each child: `gh pr edit <child> --base <base_branch>`. Updates stack nav. Removes the merged PR's worktree (refuses if dirty). |
 | `prstk board [--serve] [--port 7777]` | Without `--serve`: writes `board.html`. With `--serve`: live board (§10). |
-| `prstk doctor` | Checks `git`, `gh` installed; `gh auth status`; base branch exists on remote; agent-teams flag set in env or `~/.claude/settings.json`. |
+| `prstk doctor` | Checks `git`, `gh` installed; `gh auth status`; base branch exists on remote; agent-teams flag set in env or `~/.claude/settings.json`. When a live PR has evidence, also prints `playwright` (`npx` on PATH) and `vhs` lines; a missing capture tool warns and never fails doctor. |
 | `prstk teardown` | Refuses unless every PR is `merged` or `abandoned` and every worktree is clean. Also refuses if `_archive/<initiative>` already exists (dir or file). Appends the teardown LOG entry, regenerates PLAN.md and board.html, removes the worktrees, deletes `.lock`, `.prstk.log` and the empty `worktrees/`, then moves the initiative dir to `_archive/<initiative>/` with a single rename and clears `current`. If any step fails the initiative stays where it was, and re-running teardown completes it. |
 
 ### Stack nav block (in every PR body)
@@ -297,6 +340,9 @@ Errors:
 Warnings:
 - Status unchanged for > 2h in a slot-holding status
 - `notes.md` Description empty at `director-review`
+- `evidence` is set but the spec has no non-empty `## Evidence` section (an HTML comment alone counts as empty)
+
+(`evidence` other than empty, `screenshots` or `video` is an error.)
 
 ---
 
@@ -317,7 +363,7 @@ Warnings:
 - **Columns:** Planned · Ready · In Progress · Director Review · Awaiting You · Merged
   - `changes-requested` and `fixing` show in In Progress with a tag; `fix-pending` shows in Ready with a tag
 - **Swimlanes:** one per root-to-leaf path; a PR appears in the first lane that contains it. Lanes after the first are labeled by where they branch ("off 02").
-- **Card:** id, title, PR link, parent id, Opus badge (only if opus), blocked badge (reason on hover), time in current status.
+- **Card:** id, title, PR link, parent id, Opus badge (only if opus), blocked badge (reason on hover), time in current status. A PR with audit evidence also shows a badge, `📷 <steps with an after>/<steps>` (`🎬` when any capture is video), or `📷 needs before` when the level is set and nothing was captured before. Under the subtitle, a small before→after strip of step 1 (images only; the static `board.html` shows only the badge).
 - **Stack tree:** Mermaid diagram (from CDN), nodes colored by status.
 - Clicking a card (or a PR id in the slot bar) opens that PR's detail page; the header links to the initiative log.
 
@@ -331,8 +377,13 @@ Read-only, live-updating over the same SSE stream (a page re-fetches when an eve
 | `GET /i/{repo}/{name}/log/` | initiative log page (`/log` redirects here) |
 | `GET /api/i/{repo}/{name}/pr/{id}` | `render.PRDetail` JSON |
 | `GET /api/i/{repo}/{name}/log` | `[]render.LogEntry` JSON, file order (oldest first) |
+| `GET /i/{repo}/{name}/pr/{id}/evidence/{phase}/{file}` | one evidence capture (`phase` is `before` or `after`) |
+| `GET /i/{repo}/{name}/pr/{id}/evidence/script` | the registered capture script, as `text/plain` |
 
-- **PR page:** frontmatter facts (status, reason, parent, branch, worker, model, GitHub link), then collapsible sections: Spec (body up to `## Review: Director`), Director review (one block per `###` round), the reviewer's feedback, Worker notes (`notes.md`), and the log entries that mention the PR.
+- **PR page:** frontmatter facts (status, reason, parent, branch, worker, model, GitHub link), then collapsible sections: Spec (body up to `## Review: Director`), Director review (one block per `###` round), the reviewer's feedback, **Evidence** (when the PR has any, above the worker notes), Worker notes (`notes.md`), and the log entries that mention the PR.
+- **Evidence section:** one row per step: a caption, then the before and after side by side (stacked on narrow screens). Images open full size in a new tab, videos play inline with controls. Each shows its short commit and capture time. Superseded after captures sit in a collapsed "earlier after captures" block, and there is a "View capture script" link. `render.PRDetail` carries it as `evidence` (level, script, and per-step before/after/earlier), `render.Card` as a count summary plus the step 1 thumbnails; URLs are relative to the page base so the same JSON works live and archived.
+- **Evidence files:** served only from the loaded manifest. `{phase}` must be `before` or `after`, and `{file}` must equal a manifest item's stored file name in that phase. The URL value is a lookup key and is never joined into a path; the served path is always built from the loaded PR, must be a regular file (no symlinks) inside the PR's `evidence/`, and gets a Content-Type from an extension allowlist. Responses set `X-Content-Type-Options: nosniff`, a restrictive `Content-Security-Policy`, and `Cache-Control: no-cache`, and support range requests so videos can seek. Anything else is a 404 with no filesystem detail.
+- **Live refresh:** a change to a PR's `evidence.json` triggers the same SSE event as any plan file, so cards and detail pages update as captures arrive.
 - **Log page:** every LOG.md entry, filterable by type and PR (`?type=review&pr=03`, plus `order=newest`). An entry starts at a `## <yyyy-mm-dd hh:mm> · <type> · <by>` line. It mentions a PR when the PR's id appears as a whole token (`03` matches in "on 03." but not in `103`, `2026-11-03`, `v-03` or `03-slug`).
 - **Path parameters:** `{repo}` and `{name}` must be safe directory names and load as an initiative; `{id}` must equal the id of one of its loaded PRs. Anything else is a 404. Files are read only through paths of the loaded initiative.
 - **Untrusted markdown:** specs, notes and log entries are rendered in the browser only through `DOMPurify.sanitize(marked.parse(...))` (pinned versions from cdn.jsdelivr.net, with SRI). Every other field is inserted as text, never as HTML.
@@ -347,6 +398,7 @@ Teardown (§8) moves a finished initiative to `<repo>/_archive/<dir>/`. The boar
 |---|---|
 | `GET /a/{repo}/{name}/` | archived board (`/a/{repo}/{name}` redirects here) |
 | `GET /a/{repo}/{name}/pr/{id}/` | archived PR detail |
+| `GET /a/{repo}/{name}/pr/{id}/evidence/{phase}/{file}`, `.../evidence/script` | archived evidence captures and script, same checks as live |
 | `GET /a/{repo}/{name}/log/` | archived log |
 | `GET /a/{repo}/legacy/{file}` | legacy `.md` archive, rendered as sanitized markdown |
 | `GET /api/a/{repo}/{name}`, `.../pr/{id}`, `.../log` | the same JSON as `/api/i/...` |
