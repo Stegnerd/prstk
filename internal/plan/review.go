@@ -3,6 +3,8 @@ package plan
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -244,4 +246,37 @@ func joinSection(head, sec []string, tail []string, n int, date time.Time, verdi
 		return strings.Join(out, "\n") + "\n"
 	}
 	return strings.Join(out, "\n") + "\n\n" + rest
+}
+
+var directorRoundRe = regexp.MustCompile(`^### Round (\d+)(?: \([^)]*\))?:?\s*(.*)$`)
+
+// LatestDirectorVerdict returns the last "### Round N (date): <verdict>"
+// under "## Review: Director": the round number and the trimmed verdict text
+// (e.g. "approved", "changes-requested"). It returns (0, "") when the section
+// has no rounds.
+func (s *Spec) LatestDirectorVerdict() (int, string) {
+	in, fenced := false, false
+	round, verdict := 0, ""
+	for _, l := range strings.Split(s.Body(), "\n") {
+		if isFence(l) {
+			fenced = !fenced
+			continue
+		}
+		if fenced {
+			continue
+		}
+		if strings.HasPrefix(l, "## ") {
+			in = strings.TrimRight(l, " \t\r") == directorHeading
+			continue
+		}
+		if !in {
+			continue
+		}
+		if m := directorRoundRe.FindStringSubmatch(strings.TrimRight(l, " \t\r")); m != nil {
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				round, verdict = n, strings.TrimSpace(m[2])
+			}
+		}
+	}
+	return round, verdict
 }
