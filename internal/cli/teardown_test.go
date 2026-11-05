@@ -240,3 +240,45 @@ func TestTeardownRenameFailureIsRerunnable(t *testing.T) {
 	}
 	teardownCheckArchived(t, e, in, want)
 }
+
+func TestTeardownArchivesEvidence(t *testing.T) {
+	e := newEnv(t)
+	e.run("init", "tiny")
+	e.run("add", "01", "one", "--title", "One", "--evidence", "video")
+	e.run("assign", "01", "--worker", "w")
+	e.run("evidence", "add", "01", "--phase", "before", "--file", e.writeTemp("Home Page.png", "png bytes"), "--caption", "Home")
+	e.run("evidence", "add", "01", "--phase", "before", "--file", e.writeTemp("flow.webm", "webm bytes"))
+	e.run("evidence", "script", "01", "--file", e.writeTemp("capture.mjs", "// script\n"))
+	in := e.initiative()
+	before, err := plan.LoadEvidence(in.PR("01"))
+	if err != nil || len(before.Items) != 2 {
+		t.Fatalf("manifest before teardown: %+v %v", before, err)
+	}
+	e.run("status", "01", "abandoned")
+	e.run("teardown")
+
+	arch := plan.ArchivePath(in.RepoDir(), in.Name)
+	evDir := filepath.Join(arch, "prs", "01-one", "evidence")
+	for _, f := range []string{"evidence.json", "before/home-page.png", "before/flow.webm", "script/capture.mjs"} {
+		if _, err := os.Stat(filepath.Join(evDir, f)); err != nil {
+			t.Errorf("archive missing evidence/%s: %v", f, err)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(evDir, "before", "home-page.png")); string(b) != "png bytes" {
+		t.Errorf("archived capture content: %q", b)
+	}
+	ain, err := plan.LoadInitiative(arch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := plan.LoadEvidence(ain.PR("01"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Script != "capture.mjs" || len(got.Items) != 2 || got.Items[0].File != "home-page.png" || got.Items[0].Caption != "Home" || got.Items[0].Commit != before.Items[0].Commit {
+		t.Fatalf("archived manifest: %+v", got)
+	}
+	if ain.PR("01").EvidenceFilePath(got.Items[0]) != filepath.Join(evDir, "before", "home-page.png") {
+		t.Fatalf("path: %s", ain.PR("01").EvidenceFilePath(got.Items[0]))
+	}
+}

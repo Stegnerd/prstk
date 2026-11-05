@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -46,9 +45,9 @@ func cmdDoctor(a *App) error {
 			a.out("✓ %-14s %s", name, okDetail)
 		}
 	}
-	gitPath, err := exec.LookPath("git")
+	gitPath, err := lookPath("git")
 	check("git", err, gitPath)
-	ghPath, ghErr := exec.LookPath("gh")
+	ghPath, ghErr := lookPath("gh")
 	check("gh", ghErr, ghPath)
 	if ghErr == nil {
 		check("gh auth", a.GH.AuthStatus(), "logged in")
@@ -82,6 +81,9 @@ func cmdDoctor(a *App) error {
 		check("base branch", err, in.Meta.BaseBranch+" exists on origin ("+in.Name+")")
 	}
 	check("agent teams", a.agentTeamsEnabled(), "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
+	if lerr == nil {
+		a.doctorEvidence(in)
+	}
 	if failed > 0 {
 		return fmt.Errorf("%d check(s) failed", failed)
 	}
