@@ -196,7 +196,7 @@ func (a *App) updateStackNav(in *plan.Initiative) ([]int, error) {
 	return touched, nil
 }
 
-func cmdOpen(a *App, id string) error {
+func cmdOpen(a *App, id string, skipEvidence *string) error {
 	return a.mutate(func(in *plan.Initiative) (string, error) {
 		p := in.PR(id)
 		if p == nil {
@@ -210,6 +210,9 @@ func cmdOpen(a *App, id string) error {
 		wt := in.Worktree(id)
 		if !exists(wt) {
 			return "", fmt.Errorf("no worktree at %s (assign first)", wt)
+		}
+		if err := a.evidenceGate(in, p, "open", skipEvidence); err != nil {
+			return "", err
 		}
 		if dirty, err := a.Git.Dirty(wt); err != nil {
 			return "", err
@@ -229,6 +232,9 @@ func cmdOpen(a *App, id string) error {
 			}
 			if n == 0 {
 				desc, _ := plan.ReadDescription(p.NotesPath())
+				if line := evidenceDescriptionLine(p); line != "" {
+					desc = strings.TrimSpace(desc + "\n\n" + line)
+				}
 				n, err = a.GH.CreatePR(repo, ghCreate(base, p, render.PRBody(desc, render.StackNav(in, id))))
 				if err != nil {
 					return "", err
@@ -265,7 +271,7 @@ func cmdOpen(a *App, id string) error {
 	})
 }
 
-func cmdReady(a *App, id string) error {
+func cmdReady(a *App, id string, skipEvidence *string) error {
 	return a.mutate(func(in *plan.Initiative) (string, error) {
 		p := in.PR(id)
 		if p == nil {
@@ -276,6 +282,9 @@ func cmdReady(a *App, id string) error {
 		}
 		if p.Status != plan.DirectorReview {
 			return "", fmt.Errorf("%s is %s; ready needs director-review", id, p.Status)
+		}
+		if err := a.evidenceGate(in, p, "ready", skipEvidence); err != nil {
+			return "", err
 		}
 		info, err := a.GH.View(in.Meta.Repo, p.PRNumber)
 		if err != nil {

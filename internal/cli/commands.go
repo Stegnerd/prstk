@@ -57,6 +57,7 @@ func (a *App) rootCmd() *cobra.Command {
 	c.Flags().StringVar(&add.model, "model", "sonnet", "worker model: sonnet or opus")
 	c.Flags().StringSliceVar(&add.conflicts, "conflicts-with", nil, "same-wave PR ids touching the same files (kept symmetric)")
 	c.Flags().BoolVar(&add.earlyStart, "early-start", false, "allow starting before the parent passes director review")
+	c.Flags().StringVar(&add.evidence, "evidence", "", "require audit evidence: screenshots or video")
 	c.MarkFlagRequired("title")
 
 	c = cmd("validate", "Check the plan and regenerate PLAN.md and board.html", 0, func([]string) error {
@@ -88,12 +89,24 @@ func (a *App) rootCmd() *cobra.Command {
 	c.Flags().BoolVar(&ignoreConflicts, "ignore-conflicts", false, "assign even if a conflicts_with PR is active")
 	c.MarkFlagRequired("worker")
 
-	cmd("open <id>", "Push and open a draft PR (or re-enter director review)", 1, func(args []string) error {
-		return cmdOpen(a, args[0])
+	var openCmd, readyCmd *cobra.Command
+	var skipOpen, skipReady string
+	openCmd = cmd("open <id>", "Push and open a draft PR (or re-enter director review)", 1, func(args []string) error {
+		skip, err := skipReason(openCmd, skipOpen)
+		if err != nil {
+			return err
+		}
+		return cmdOpen(a, args[0], skip)
 	})
-	cmd("ready <id>", "Mark the PR ready for review and release the worker", 1, func(args []string) error {
-		return cmdReady(a, args[0])
+	openCmd.Flags().StringVar(&skipOpen, "skip-evidence", "", "bypass the audit-evidence gate, with a `reason` (logged)")
+	readyCmd = cmd("ready <id>", "Mark the PR ready for review and release the worker", 1, func(args []string) error {
+		skip, err := skipReason(readyCmd, skipReady)
+		if err != nil {
+			return err
+		}
+		return cmdReady(a, args[0], skip)
 	})
+	readyCmd.Flags().StringVar(&skipReady, "skip-evidence", "", "bypass the audit-evidence gate, with a `reason` (logged)")
 	cmd("propagate <id>", "Merge each parent into its children, parent-first", 1, func(args []string) error {
 		return cmdPropagate(a, args[0])
 	})
@@ -147,6 +160,36 @@ func (a *App) rootCmd() *cobra.Command {
 	})
 	c.Flags().StringVar(&spawnWorker, "worker", "", "teammate name (default: the assigned worker)")
 
+	// ---- audit evidence ----
+	evCmd := &cobra.Command{Use: "evidence", Short: "Record and list audit evidence (before/after captures)"}
+	root.AddCommand(evCmd)
+	evSub := func(use, short string, fn func(args []string) error) *cobra.Command {
+		c := &cobra.Command{Use: use, Short: short, Args: cobra.ExactArgs(1), RunE: run(fn)}
+		evCmd.AddCommand(c)
+		return c
+	}
+	var evAdd evidenceAddOpts
+	c = evSub("add <id>", "Record a before/after capture for a PR", func(args []string) error {
+		evAdd.id = args[0]
+		return cmdEvidenceAdd(a, evAdd)
+	})
+	c.Flags().StringVar(&evAdd.phase, "phase", "", "before or after (required)")
+	c.Flags().StringVar(&evAdd.file, "file", "", "capture `path` (png, jpg, webp, gif, webm, mp4; required)")
+	c.Flags().IntVar(&evAdd.step, "step", 0, "step number (default: next, or for after the first uncovered before step)")
+	c.Flags().StringVar(&evAdd.caption, "caption", "", "caption")
+	c.MarkFlagRequired("phase")
+	c.MarkFlagRequired("file")
+	var evScript string
+	c = evSub("script <id>", "Register the capture script for a PR", func(args []string) error {
+		return cmdEvidenceScript(a, args[0], evScript)
+	})
+	c.Flags().StringVar(&evScript, "file", "", "script `path` (.mjs, .js, .ts, .tape; required)")
+	c.MarkFlagRequired("file")
+	c = evSub("ls <id>", "List a PR's evidence steps", func(args []string) error {
+		return cmdEvidenceLs(a, args[0])
+	})
+	jsonFlag(c)
+
 	// ---- board / maintenance ----
 	var serve bool
 	var port int
@@ -168,7 +211,7 @@ func (a *App) rootCmd() *cobra.Command {
 // commandName returns the subcommand for error prefixes ("prstk assign: …").
 func commandName(root *cobra.Command, argv []string) string {
 	if c, _, err := root.Find(argv); err == nil && c != root {
-		return c.Name()
+		return strings.TrimPrefix(c.CommandPath(), root.Name()+" ")
 	}
 	if len(argv) > 0 && !strings.HasPrefix(argv[0], "-") {
 		return argv[0]

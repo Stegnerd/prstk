@@ -177,6 +177,7 @@ type addOpts struct {
 	id, slug, title, parent, model string
 	conflicts                      []string
 	earlyStart                     bool
+	evidence                       string
 }
 
 func cmdAdd(a *App, o addOpts) error {
@@ -198,6 +199,9 @@ func cmdAdd(a *App, o addOpts) error {
 	}
 	if model != "sonnet" && model != "opus" {
 		return usageError{"--model must be sonnet or opus"}
+	}
+	if o.evidence != plan.EvidenceScreenshots && o.evidence != plan.EvidenceVideo && o.evidence != plan.EvidenceNone {
+		return usageError{"--evidence must be screenshots or video"}
 	}
 
 	return a.mutate(func(in *plan.Initiative) (string, error) {
@@ -226,12 +230,24 @@ func cmdAdd(a *App, o addOpts) error {
 				ID: id, Slug: slug, Title: title, Parent: parent, ConflictsWith: conflicts,
 				Status: plan.Planned, StatusSince: now, EarlyStart: o.earlyStart, Model: model,
 				Branch: fmt.Sprintf("prstk/%s/%s-%s", in.Meta.Initiative, id, slug), Dir: dir,
+				Evidence: o.evidence,
 			}
-			s.InitBody(fmt.Sprintf(specSkeleton, in.Config.ReviewerName()))
+			skeleton := specSkeleton
+			if o.evidence != plan.EvidenceNone {
+				skeleton = strings.Replace(skeleton, "## Review: Director", evidenceSkeleton+"## Review: Director", 1)
+			}
+			s.InitBody(fmt.Sprintf(skeleton, in.Config.ReviewerName()))
 			if err := s.Save(); err != nil {
 				return "", err
 			}
 			existing = s
+		}
+		// An explicit --evidence on an existing PR sets its level (the body is left alone).
+		if o.evidence != plan.EvidenceNone && existing.Evidence != o.evidence {
+			existing.Evidence = o.evidence
+			if err := existing.Save(); err != nil {
+				return "", err
+			}
 		}
 		notes := existing.NotesPath()
 		if _, err := os.Stat(notes); errors.Is(err, os.ErrNotExist) {
@@ -265,6 +281,9 @@ func cmdAdd(a *App, o addOpts) error {
 		}
 		if len(conflicts) > 0 {
 			extra += " · conflicts " + strings.Join(conflicts, ",")
+		}
+		if o.evidence != plan.EvidenceNone {
+			extra += " · evidence " + o.evidence
 		}
 		if err := in.AppendLog(now, "add", fmt.Sprintf("%s %s (%s) on %s%s", id, slug, title, on, extra)); err != nil {
 			return "", err
@@ -357,6 +376,7 @@ func cmdShow(a *App, id string) error {
 		"early_start": p.EarlyStart, "model": p.Model, "worker": p.Worker, "branch": p.Branch,
 		"pr_number": p.PRNumber, "base": in.BaseFor(p),
 		"spec": p.SpecPath(), "notes": p.NotesPath(), "worktree": wt,
+		"evidence": p.Evidence, "evidence_dir": p.EvidenceDir(),
 	}
 	if a.jsonOut {
 		return a.printJSON(v)
@@ -385,6 +405,9 @@ func cmdShow(a *App, id string) error {
 		lines = append(lines, [2]string{"pr", fmt.Sprintf("#%d https://github.com/%s/pull/%d", p.PRNumber, in.Meta.Repo, p.PRNumber)})
 	}
 	lines = append(lines, [2]string{"spec", p.SpecPath()}, [2]string{"notes", p.NotesPath()})
+	if p.Evidence != plan.EvidenceNone {
+		lines = append(lines, [2]string{"evidence", evidenceSummary(p)}, [2]string{"evidence_dir", p.EvidenceDir()})
+	}
 	if wt != "" {
 		lines = append(lines, [2]string{"worktree", wt})
 	}
