@@ -70,6 +70,7 @@ func (s *Server) registerArchive(mux *http.ServeMux) {
 		s.archiveSlashRedirect(false)(w, r)
 	})
 	mux.HandleFunc("GET /a/{repo}/legacy/{file}", s.legacyPage)
+	s.registerEvidence(mux, "/a", s.lookupArchive)
 
 	mux.HandleFunc("GET /api/archives", s.apiArchives)
 	mux.HandleFunc("GET /api/a/{repo}/{name}", s.apiArchiveBoard)
