@@ -203,7 +203,7 @@ func TestEvidenceOpenGate(t *testing.T) {
 	e.evAdd("before", "a.png")
 	e.work("01", "main.go", "package main\n")
 	e.run("open", "01")
-	if body := e.gh.PRs[101].Body; !strings.Contains(body, "📷 Audit evidence: 1 before / 0 after; see the prstk board.") || !strings.Contains(body, "Implements 01.") {
+	if body := e.gh.PRs[101].Body; !strings.Contains(body, "📷 This PR has audit evidence (screenshots); see its card on the prstk board.") || !strings.Contains(body, "Implements 01.") {
 		t.Fatalf("PR body:\n%s", body)
 	}
 
@@ -239,6 +239,7 @@ func TestEvidenceReadyGate(t *testing.T) {
 
 	// New commit after the captures: they're stale.
 	e.work("01", "more.go", "package main\n")
+	e.run("open", "01") // push it, so only the staleness is in question
 	_, se, code = e.try("ready", "01")
 	if code != 1 || !strings.Contains(se, "step 1: after evidence is stale") || !strings.Contains(se, "step 2: after evidence is stale") {
 		t.Fatalf("stale: %d %s", code, se)
@@ -478,4 +479,50 @@ func TestDoctorEvidenceToolsWarnOnly(t *testing.T) {
 	if out, _ := doctor(e); strings.Contains(out, "playwright") {
 		t.Fatalf("abandoned PR still triggers tool lines:\n%s", out)
 	}
+}
+
+func TestEvidenceReadyNeedsAnAfter(t *testing.T) {
+	e := evPR(t, "screenshots")
+	e.work("01", "main.go", "package main\n")
+	e.run("open", "01", "--skip-evidence", "brand-new screen, nothing to capture before")
+	e.approve()
+	// No items at all: ready refuses.
+	if _, se, code := e.try("ready", "01"); code != 1 || !strings.Contains(se, "no after evidence at HEAD") {
+		t.Fatalf("empty ready: %d %s", code, se)
+	}
+	// An after at HEAD (no before step needed) is enough.
+	e.run("evidence", "add", "01", "--phase", "after", "--file", e.shot("new.png"), "--step", "1")
+	e.run("ready", "01")
+	if e.status("01") != "awaiting-you" {
+		t.Fatalf("status %s", e.status("01"))
+	}
+}
+
+func TestEvidenceAfterNeedsPushedHead(t *testing.T) {
+	e := evPR(t, "screenshots")
+	e.evAdd("before", "a.png")
+	e.work("01", "main.go", "package main\n")
+	e.run("open", "01")
+	e.approve()
+	// Commit after the approval without running open: HEAD isn't what was pushed.
+	e.work("01", "sneaky.go", "package main\n")
+	_, se, code := e.evAdd("after", "a2.png")
+	if code != 1 || !strings.Contains(se, "not what was pushed") || !strings.Contains(se, "prstk open 01") {
+		t.Fatalf("add after at unpushed HEAD: %d %s", code, se)
+	}
+	// An after recorded at the pushed commit, then a new unpushed commit: ready refuses too.
+	git(t, e.initiative().Worktree("01"), "reset", "--hard", "HEAD~1")
+	e.run("evidence", "add", "01", "--phase", "after", "--file", e.shot("a2.png"))
+	e.work("01", "sneaky.go", "package main\n")
+	_, se, code = e.try("ready", "01")
+	if code != 1 || !strings.Contains(se, "not what was pushed") || !strings.Contains(se, "prstk open 01") {
+		t.Fatalf("ready at unpushed HEAD: %d %s", code, se)
+	}
+	e.run("open", "01")
+	_, se, code = e.try("ready", "01")
+	if code != 1 || !strings.Contains(se, "stale") {
+		t.Fatalf("after open the old capture is stale: %d %s", code, se)
+	}
+	e.run("evidence", "add", "01", "--phase", "after", "--file", e.shot("a3.png"))
+	e.run("ready", "01")
 }
