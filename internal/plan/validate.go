@@ -55,6 +55,15 @@ func (in *Initiative) Validate(now time.Time) []Issue {
 		if p.Model != "sonnet" && p.Model != "opus" {
 			e(p.ID, "model must be sonnet or opus, got %q", p.Model)
 		}
+		switch p.Evidence {
+		case EvidenceNone:
+		case EvidenceScreenshots, EvidenceVideo:
+			if Section(p.Body(), "Evidence") == "" {
+				w(p.ID, "evidence is %s but the spec has no non-empty ## Evidence section", p.Evidence)
+			}
+		default:
+			e(p.ID, "evidence must be empty, %q or %q, got %q", EvidenceScreenshots, EvidenceVideo, p.Evidence)
+		}
 		var par *Spec
 		if p.Parent != "" {
 			par = in.PR(p.Parent)
