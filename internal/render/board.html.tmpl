@@ -106,6 +106,26 @@ details.sec > .body { padding: 0 14px 12px; }
 .badge[data-type="merged"], .badge[data-type="ready"] { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
 .filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
 .filters select { font: inherit; }
+.badge.ev-need { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.card .thumbs { display: flex; gap: 3px; align-items: center; margin-top: 5px; height: 56px; }
+.card .thumbs img { flex: 1 1 0; min-width: 0; height: 56px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); background: var(--lane); }
+.card .thumbs .arrow { color: var(--muted); font-size: 11px; flex: none; }
+.ev-step { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.ev-step:first-of-type { border-top: 0; margin-top: 0; }
+.ev-cap { font-weight: 600; margin: 0 0 6px; overflow-wrap: anywhere; }
+.ev-cap .muted { font-weight: 400; }
+.ev-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 640px) { .ev-pair { grid-template-columns: 1fr; } }
+.ev-side { min-width: 0; }
+.ev-side .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 3px; }
+.ev-side img, .ev-side video { display: block; max-width: 100%; max-height: 520px; border: 1px solid var(--line); border-radius: 6px; background: var(--lane); }
+.ev-side .none { color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 18px; text-align: center; }
+.ev-meta { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+.ev-earlier { margin-top: 6px; }
+.ev-earlier summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.ev-earlier .ev-pair { margin-top: 6px; }
+.ev-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 8px; }
+.ev-head a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
@@ -188,6 +208,29 @@ window.PRSTK = {{.Config}};
 
   let lastMermaid = "", lastData = null, mermaidSeq = 0;
 
+  // ---- evidence ----
+
+  // evURL turns a page-relative evidence URL from the API into a link under
+  // the initiative's base (/i/… or /a/…); null without a base (static board).
+  const evURL = (rel) => (C.base && !C.static && rel ? C.base + rel : null);
+
+  // evBadge is the card's compact evidence badge.
+  function evBadge(e) {
+    if (!e) return null;
+    if (e.level && !e.before) return h("span", { class: "badge ev-need", title: `evidence: ${e.level}; no before captures yet` }, "📷 needs before");
+    const icon = e.video ? "🎬" : "📷";
+    return h("span", { class: "badge", title: `evidence${e.level ? " (" + e.level + ")" : ""}: ${e.before} before, ${e.after} after, ${e.steps} steps` },
+      `${icon} ${e.after}/${e.steps}`);
+  }
+
+  // evThumbs is the card's step-1 before→after strip (live board only).
+  function evThumbs(e) {
+    const b = evURL(e && e.thumb_before), a = evURL(e && e.thumb_after);
+    if (!b && !a) return null;
+    const img = (src, alt) => h("img", { src, alt, loading: "lazy" });
+    return h("div", { class: "thumbs" }, b ? img(b, "before") : null, b && a ? h("span", { class: "arrow" }, "→") : null, a ? img(a, "after") : null);
+  }
+
   function card(c, next) {
     const url = prURL(c.id);
     return h("div", {
@@ -204,7 +247,9 @@ window.PRSTK = {{.Config}};
         c.blocked ? h("span", { class: "badge blocked", title: c.reason }, "blocked") : null,
         c.tag && !c.blocked ? h("span", { class: "badge tag", title: c.reason }, c.tag) : null,
         c.merge_after && c.column === "Awaiting You" ? h("span", { class: "badge tag", title: "merging this first would land it in the parent's branch, not the base branch" }, "merge after " + c.merge_after) : null,
-        next.includes(c.id) ? h("span", { class: "badge next" }, "next") : null));
+        evBadge(c.evidence),
+        next.includes(c.id) ? h("span", { class: "badge next" }, "next") : null),
+      evThumbs(c.evidence));
   }
 
   function render(d) {
@@ -298,6 +343,41 @@ window.PRSTK = {{.Config}};
     return h("details", { class: "sec", "data-sec": key, open: "" }, h("summary", null, title), h("div", { class: "body" }, body));
   }
 
+  // evidenceSec is the detail page's Evidence section. prev maps a media URL
+  // to the element already on the page, so a live re-render keeps a playing
+  // video (and loaded images) instead of rebuilding them.
+  function evidenceSec(ev, prev) {
+    const when = (iso) => (!iso || iso.startsWith("0001") ? "?" : new Date(iso).toLocaleString());
+    const mediaEl = (m) => {
+      const src = evURL(m.url);
+      if (!src) return h("div", { class: "none" }, m.file);
+      const old = prev.get(src);
+      if (old) return old;
+      const el = m.kind === "video"
+        ? h("video", { src, controls: "", preload: "metadata", "data-media": src })
+        : h("a", { href: src, target: "_blank", rel: "noopener", "data-media": src }, h("img", { src, alt: m.caption || m.file, loading: "lazy" }));
+      return el;
+    };
+    const side = (label, m) => h("div", { class: "ev-side" }, h("div", { class: "lbl" }, label),
+      m ? [mediaEl(m), h("div", { class: "ev-meta" }, sep([m.commit || "?", when(m.captured_at), m.file]))]
+        : h("div", { class: "none" }, `no ${label} capture`));
+    const steps = ev.pairs.map((p) => {
+      const cap = (p.after && p.after.caption) || (p.before && p.before.caption) || "";
+      return h("div", { class: "ev-step" },
+        h("p", { class: "ev-cap" }, h("span", { class: "muted" }, `Step ${p.step}`), cap ? [" · ", cap] : null),
+        h("div", { class: "ev-pair" }, side("before", p.before), side("after", p.after)),
+        p.earlier.length ? h("details", { class: "ev-earlier", "data-sec": "ev-earlier-" + p.step },
+          h("summary", null, `earlier after captures (${p.earlier.length})`),
+          p.earlier.map((m) => h("div", { class: "ev-pair" }, side("after (earlier)", m)))) : null);
+    });
+    const script = ev.script && evURL(ev.script.url);
+    return sec("evidence", `Evidence (${ev.pairs.length} step${ev.pairs.length === 1 ? "" : "s"})`,
+      h("div", { class: "ev-head" },
+        ev.level ? h("span", { class: "badge" }, ev.level) : h("span", { class: "muted" }, "no evidence level set"),
+        script ? h("a", { href: script, target: "_blank", rel: "noopener", title: ev.script.name }, "View capture script") : null),
+      steps.length ? steps : h("p", { class: "muted" }, "No captures yet."));
+  }
+
   function renderPR(d) {
     document.title = `${d.id} ${d.title} · prstk`;
     $("#title").textContent = `${d.id} ${d.title}`;
@@ -317,6 +397,8 @@ window.PRSTK = {{.Config}};
       fact("worker", d.worker || "—"),
       fact("model", d.model || "—"));
     const rounds = d.spec.director_rounds;
+    const prev = new Map();
+    document.querySelectorAll("[data-media]").forEach((el) => prev.set(el.dataset.media, el));
     rerender(() => $("#main").replaceChildren(h("div", { class: "detail" },
       facts,
       sec("spec", "Spec", md(d.spec.spec)),
@@ -324,6 +406,7 @@ window.PRSTK = {{.Config}};
         rounds.length ? rounds.map((r) => h("div", { class: "round" }, h("h3", null, r.heading || "(no heading)"), md(r.body)))
           : h("p", { class: "muted" }, "No review rounds yet.")),
       sec("reviewer", d.spec.reviewer_name ? `${d.spec.reviewer_name}'s feedback` : "Reviewer feedback", md(d.spec.reviewer)),
+      d.evidence ? evidenceSec(d.evidence, prev) : null,
       sec("notes", "Worker notes (notes.md)", md(d.notes)),
       sec("log", `Log (${d.log.length})`,
         d.log.length ? d.log.map(entry) : h("p", { class: "muted" }, "No log entries mention this PR."),

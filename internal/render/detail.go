@@ -227,6 +227,8 @@ type PRDetail struct {
 	Spec   SpecParts  `json:"spec"`
 	Notes  string     `json:"notes"` // raw notes.md markdown
 	Log    []LogEntry `json:"log"`   // entries whose PRs include this id
+	// Evidence shadows Card.Evidence in the JSON; nil when there is none.
+	Evidence *DetailEvidence `json:"evidence,omitempty"`
 }
 
 // BuildPRDetail builds the detail payload for PR id; false if id is not a PR
@@ -241,8 +243,9 @@ func BuildPRDetail(in *plan.Initiative, id string, now time.Time) (PRDetail, boo
 	_ = now // reserved: the card's "since" is rendered relative on the client
 	d := PRDetail{
 		Card: buildCard(in, p), Branch: p.Branch, Worker: p.Worker, Model: p.Model, Parent: p.Parent,
-		Spec: SplitSpec(p.Body()), Log: []LogEntry{},
+		Spec: SplitSpec(p.Body()), Log: []LogEntry{}, Evidence: buildDetailEvidence(p),
 	}
+	d.Card.Evidence = nil // shadowed by d.Evidence; don't read the manifest's summary twice into one payload
 	if b, err := os.ReadFile(p.NotesPath()); err == nil {
 		d.Notes = string(b)
 	}

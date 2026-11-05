@@ -58,6 +58,8 @@ type Card struct {
 	Since    time.Time `json:"since"`
 	// MergeAfter is set while the parent is unmerged: "#102" or a PR id.
 	MergeAfter string `json:"merge_after,omitempty"`
+	// Evidence is nil when the spec has no evidence level and no captures.
+	Evidence *CardEvidence `json:"evidence,omitempty"`
 }
 
 func column(in *plan.Initiative, p *plan.Spec) (col, tag string) {
@@ -91,7 +93,8 @@ func buildCard(in *plan.Initiative, p *plan.Spec) Card {
 	col, tag := column(in, p)
 	c := Card{ID: p.ID, Title: p.Title, Parent: p.Parent, Status: DisplayStatus(in, p), Column: col, Tag: tag,
 		PRNumber: p.PRNumber, Opus: p.Model == "opus", Blocked: p.Status == plan.Blocked,
-		Reason: p.BlockedReason, Worker: p.Worker, Since: p.StatusSince, MergeAfter: MergeAfter(in, p)}
+		Reason: p.BlockedReason, Worker: p.Worker, Since: p.StatusSince, MergeAfter: MergeAfter(in, p),
+		Evidence: buildCardEvidence(p)}
 	if p.PRNumber > 0 {
 		c.URL = fmt.Sprintf("https://github.com/%s/pull/%d", in.Meta.Repo, p.PRNumber)
 	}
