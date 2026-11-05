@@ -76,6 +76,21 @@ func (a *App) worktreeHead(in *plan.Initiative, id string) (string, error) {
 	return a.Git.Run(wt, "rev-parse", "HEAD")
 }
 
+// checkPushed requires the worktree HEAD to be what's on origin/<branch> (the
+// last remote-tracking state; no fetch), i.e. the code `open` pushed and the
+// director reviewed.
+func (a *App) checkPushed(in *plan.Initiative, p *plan.Spec, head string) error {
+	remote, err := a.Git.Run(in.Worktree(p.ID), "rev-parse", "origin/"+p.Branch)
+	if err != nil || remote != head {
+		got := "origin/" + p.Branch + " doesn't exist"
+		if err == nil {
+			got = fmt.Sprintf("origin/%s is @%s", p.Branch, shortSHA(remote))
+		}
+		return fmt.Errorf("worktree HEAD @%s is not what was pushed (%s); run prstk open %s to push it and get it re-reviewed first", shortSHA(head), got, p.ID)
+	}
+	return nil
+}
+
 // ---- gates ----
 
 // evidenceGate runs the open/ready gate for p. at is "open" or "ready". With
@@ -123,6 +138,9 @@ func (a *App) readyGate(in *plan.Initiative, p *plan.Spec) error {
 	if err != nil {
 		return fmt.Errorf("can't verify audit evidence: %w", err)
 	}
+	if err := a.checkPushed(in, p, head); err != nil {
+		return err
+	}
 	m, err := plan.LoadEvidence(p)
 	if err != nil {
 		return err
@@ -139,14 +157,18 @@ func (a *App) readyGate(in *plan.Initiative, p *plan.Spec) error {
 			problems = append(problems, fmt.Sprintf("step %d: after evidence is stale (@%s, HEAD is @%s)", pr.Step, shortSHA(pr.After.Commit), shortSHA(head)))
 		}
 	}
-	if p.Evidence == plan.EvidenceVideo {
-		ok := false
-		for _, it := range m.Items {
-			if it.Phase == plan.PhaseAfter && it.Kind == plan.KindVideo && it.Commit == head {
-				ok = true
-			}
+	afterAtHead, videoAtHead := 0, false
+	for _, it := range m.Items {
+		if it.Phase == plan.PhaseAfter && it.Commit == head {
+			afterAtHead++
+			videoAtHead = videoAtHead || it.Kind == plan.KindVideo
 		}
-		if !ok {
+	}
+	if afterAtHead == 0 && len(problems) == 0 {
+		problems = append(problems, "no after evidence at HEAD")
+	}
+	if p.Evidence == plan.EvidenceVideo {
+		if !videoAtHead {
 			problems = append(problems, "no after video at HEAD")
 		}
 	}
@@ -162,12 +184,7 @@ func evidenceDescriptionLine(p *plan.Spec) string {
 	if p.Evidence == plan.EvidenceNone {
 		return ""
 	}
-	m, err := plan.LoadEvidence(p)
-	if err != nil {
-		return ""
-	}
-	b, af := evidenceCounts(m)
-	return fmt.Sprintf("📷 Audit evidence: %d before / %d after; see the prstk board.", b, af)
+	return fmt.Sprintf("📷 This PR has audit evidence (%s); see its card on the prstk board.", p.Evidence)
 }
 
 // ---- evidence add ----
@@ -219,6 +236,9 @@ func cmdEvidenceAdd(a *App, o evidenceAddOpts) error {
 				return "", err
 			} else if out != "" {
 				return "", fmt.Errorf("worktree %s has uncommitted changes; after evidence must come from the committed, approved code", wt)
+			}
+			if err := a.checkPushed(in, p, head); err != nil {
+				return "", err
 			}
 			if step == 0 {
 				m, err := plan.LoadEvidence(p)
