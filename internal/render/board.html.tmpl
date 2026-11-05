@@ -123,7 +123,7 @@ details.sec > .body { padding: 0 14px 12px; }
 .ev-meta { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
 .ev-earlier { margin-top: 6px; }
 .ev-earlier summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.ev-earlier .ev-pair { margin-top: 6px; }
+.ev-old { margin-top: 6px; }
 .ev-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 8px; }
 .ev-head a { color: var(--accent); text-decoration: none; }
 </style>
@@ -358,17 +358,18 @@ window.PRSTK = {{.Config}};
         : h("a", { href: src, target: "_blank", rel: "noopener", "data-media": src }, h("img", { src, alt: m.caption || m.file, loading: "lazy" }));
       return el;
     };
-    const side = (label, m) => h("div", { class: "ev-side" }, h("div", { class: "lbl" }, label),
-      m ? [mediaEl(m), h("div", { class: "ev-meta" }, sep([m.commit || "?", when(m.captured_at), m.file]))]
-        : h("div", { class: "none" }, `no ${label} capture`));
+    const item = (m) => [mediaEl(m), h("div", { class: "ev-meta" }, sep([m.commit || "?", when(m.captured_at), m.file]))];
+    const side = (label, m, extra) => h("div", { class: "ev-side" }, h("div", { class: "lbl" }, label),
+      m ? item(m) : h("div", { class: "none" }, `no ${label} capture`), extra);
     const steps = ev.pairs.map((p) => {
       const cap = (p.after && p.after.caption) || (p.before && p.before.caption) || "";
       return h("div", { class: "ev-step" },
         h("p", { class: "ev-cap" }, h("span", { class: "muted" }, `Step ${p.step}`), cap ? [" · ", cap] : null),
-        h("div", { class: "ev-pair" }, side("before", p.before), side("after", p.after)),
-        p.earlier.length ? h("details", { class: "ev-earlier", "data-sec": "ev-earlier-" + p.step },
-          h("summary", null, `earlier after captures (${p.earlier.length})`),
-          p.earlier.map((m) => h("div", { class: "ev-pair" }, side("after (earlier)", m)))) : null);
+        h("div", { class: "ev-pair" }, side("before", p.before), side("after", p.after,
+          // superseded afters sit under the current after, newest first
+          p.earlier.length ? h("details", { class: "ev-earlier", "data-sec": "ev-earlier-" + p.step },
+            h("summary", null, `earlier after captures (${p.earlier.length})`),
+            p.earlier.slice().reverse().map((m) => h("div", { class: "ev-old" }, item(m)))) : null)));
     });
     const script = ev.script && evURL(ev.script.url);
     return sec("evidence", `Evidence (${ev.pairs.length} step${ev.pairs.length === 1 ? "" : "s"})`,
