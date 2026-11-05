@@ -478,6 +478,11 @@ func TestValidateEvidence(t *testing.T) {
 		"screenshots no section":   {"screenshots", "## Goal\nx\n", 0, 1},
 		"video empty section":      {"video", "## Evidence\n\n   \n## Goal\nx\n", 0, 1},
 		"empty section at end":     {"screenshots", "## Goal\nx\n\n## Evidence\n", 0, 1},
+		"single-line comment only": {"screenshots", "## Evidence\n<!-- describe what to capture -->\n\n## Goal\nx\n", 0, 1},
+		"multi-line comment only":  {"video", "## Goal\nx\n\n## Evidence\n\n<!--\n  placeholder\n  more\n-->\n", 0, 1},
+		"two comments":             {"screenshots", "## Evidence\n<!-- a -->\n <!-- b\nc -->\n", 0, 1},
+		"comment plus text":        {"screenshots", "## Evidence\n<!-- note -->\nShow the page.\n", 0, 0},
+		"text after multi comment": {"video", "## Evidence\n<!--\nx\n-->\nRecord it.\n", 0, 0},
 		"unknown":                  {"gif", "## Evidence\nstuff\n", 1, 0},
 		"unknown no section":       {"Screenshots", "## Goal\nx\n", 1, 0},
 	} {
