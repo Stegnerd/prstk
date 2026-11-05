@@ -59,6 +59,9 @@ func cmdSpawnPrompt(a *App, id, worker string) error {
 	case p.Status == plan.ChangesRequested:
 		b.WriteString("The director requested changes: address the newest `### Round` under `## Review: Director` in spec.md, and record what you changed in notes.md.\n")
 	}
+	if para := evidenceSpawnParagraph(p); para != "" {
+		b.WriteString(para)
+	}
 	b.WriteString("Read the spec first.\n")
 	fmt.Fprint(a.Stdout, b.String())
 	return nil
