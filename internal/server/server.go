@@ -79,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/i/{repo}/{name}", s.apiBoard)
 	mux.HandleFunc("GET /api/i/{repo}/{name}/pr/{id}", s.apiPR)
 	mux.HandleFunc("GET /api/i/{repo}/{name}/log", s.apiLog)
+	s.registerEvidence(mux, "/i", s.lookup)
 	s.registerArchive(mux)
 	mux.HandleFunc("GET /events", s.events)
 	return mux
@@ -288,6 +289,9 @@ func (s *Server) signature(key string) string {
 	for _, p := range prs {
 		add(filepath.Join(dir, "prs", p.Name(), "spec.md"))
 		add(filepath.Join(dir, "prs", p.Name(), "notes.md"))
+		// prstk writes evidence.json after copying the file it adds, so its
+		// change covers new captures and scripts.
+		add(filepath.Join(dir, "prs", p.Name(), "evidence", "evidence.json"))
 	}
 	return b.String()
 }
