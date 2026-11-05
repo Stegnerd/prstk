@@ -26,6 +26,7 @@ type Spec struct {
 	BlockedFrom   Status
 	EarlyStart    bool
 	Model         string
+	Evidence      string // EvidenceNone, EvidenceScreenshots or EvidenceVideo
 	Worker        string
 	Branch        string
 	PRNumber      int
@@ -46,6 +47,7 @@ type specYAML struct {
 	BlockedFrom   string    `yaml:"blocked_from"`
 	EarlyStart    bool      `yaml:"early_start"`
 	Model         string    `yaml:"model"`
+	Evidence      string    `yaml:"evidence"`
 	Worker        string    `yaml:"worker"`
 	Branch        string    `yaml:"branch"`
 	PRNumber      int       `yaml:"pr_number"`
@@ -87,6 +89,7 @@ func (s *Spec) node() *yaml.Node {
 		add("blocked_from", scalar(string(s.BlockedFrom))).
 		add("early_start", scalar(s.EarlyStart)).
 		add("model", scalar(s.Model)).
+		add("evidence", scalar(s.Evidence)).
 		add("worker", scalar(s.Worker)).
 		add("branch", scalar(s.Branch)).
 		add("pr_number", scalar(s.PRNumber))
@@ -118,7 +121,7 @@ func LoadSpec(dir string) (*Spec, error) {
 	s := &Spec{
 		ID: y.ID, Slug: y.Slug, Title: y.Title, ConflictsWith: y.ConflictsWith,
 		Status: Status(y.Status), StatusSince: y.StatusSince, BlockedReason: y.BlockedReason,
-		BlockedFrom: Status(y.BlockedFrom), EarlyStart: y.EarlyStart, Model: y.Model,
+		BlockedFrom: Status(y.BlockedFrom), EarlyStart: y.EarlyStart, Model: y.Model, Evidence: y.Evidence,
 		Worker: y.Worker, Branch: y.Branch, PRNumber: y.PRNumber, Dir: dir, doc: d,
 	}
 	if y.Parent != nil {

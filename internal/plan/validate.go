@@ -3,6 +3,7 @@ package plan
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -54,6 +55,15 @@ func (in *Initiative) Validate(now time.Time) []Issue {
 		}
 		if p.Model != "sonnet" && p.Model != "opus" {
 			e(p.ID, "model must be sonnet or opus, got %q", p.Model)
+		}
+		switch p.Evidence {
+		case EvidenceNone:
+		case EvidenceScreenshots, EvidenceVideo:
+			if evidenceSectionEmpty(p.Body()) {
+				w(p.ID, "evidence is %s but the spec has no non-empty ## Evidence section", p.Evidence)
+			}
+		default:
+			e(p.ID, "evidence must be empty, %q or %q, got %q", EvidenceScreenshots, EvidenceVideo, p.Evidence)
 		}
 		var par *Spec
 		if p.Parent != "" {
@@ -110,6 +120,14 @@ func (in *Initiative) Validate(now time.Time) []Issue {
 		e("", "%d PRs hold worker slots, max_workers is %d", n, in.MaxWorkers())
 	}
 	return out
+}
+
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
+
+// evidenceSectionEmpty reports whether the body's "## Evidence" section is
+// missing or holds only whitespace and HTML comments (e.g. a placeholder).
+func evidenceSectionEmpty(body string) bool {
+	return strings.TrimSpace(htmlCommentRe.ReplaceAllString(Section(body, "Evidence"), "")) == ""
 }
 
 // ReadDescription returns the body of notes.md's "## Description" section.
