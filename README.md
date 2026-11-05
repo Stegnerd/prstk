@@ -103,7 +103,7 @@ Then run, from inside that repo:
 prstk doctor
 ```
 
-It checks git, gh, gh auth, that the base branch exists on origin, and the agent-teams flag. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
+It checks git, gh, gh auth, that the base branch exists on origin, and the agent-teams flag. When a live PR uses audit evidence it also prints `playwright` (needs `npx`, which comes with Node) and `vhs` lines, and only warns if a tool is missing. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
 
 ### 5. Optional per-repo config
 
@@ -178,6 +178,28 @@ Further down the same page: the director's review rounds, your feedback, and the
 
 ![Log entries for add, assign, replan, open, review, ready and merged](docs/images/log.png)
 
+### Audit evidence
+
+For a PR that changes something you can see, the director can ask for **audit evidence**: screenshots (or a video) of the same steps before the change and after it, so you can check what changed without running anything. The director flags such a PR with `prstk add … --evidence screenshots|video` and writes the steps to capture under `## Evidence` in its spec. prstk never captures anything; it records the files, enforces the timing and gates `open` and `ready`.
+
+Two tools do the capturing, and the worker picks one:
+
+| Tool | For | Install |
+|---|---|---|
+| [Playwright](https://playwright.dev) | anything in a browser | Node; `npx` comes with it, and the template pins `playwright@1.64.1` |
+| [vhs](https://github.com/charmbracelet/vhs) | terminal output and TUIs | `brew install vhs` (also installs ttyd and ffmpeg) |
+
+Ready-to-copy scripts and the exact commands are in [docs/evidence/](docs/evidence/README.md).
+
+The flow:
+
+1. **Before.** The worker's first step, before any code change, is to write a capture script, run it, register it (`prstk evidence script`) and record each output (`prstk evidence add --phase before`). `prstk open` is refused until it has.
+2. **Build and review** as usual.
+3. **After.** Once the director approves, the worker re-runs the same script on the approved, pushed code and records it with the same step numbers (`prstk evidence add --phase after`). The director checks `prstk evidence ls`.
+4. **Ready.** `prstk ready` needs an after capture at the current HEAD (always at least one, even when the before gate was skipped), and HEAD must equal what is on `origin/<branch>`. New commits make older afters stale, so a fix round re-captures. `--skip-evidence "<reason>"` bypasses a gate, is logged, and is for the director to use only with your say-so or when capture is impossible.
+
+Where you see it, in `prstk board --serve`: the PR's card shows a badge (`📷 2/3` is two of three steps with an after capture, `🎬` when there is video, `📷 needs before` before any capture) and a before-to-after strip of step 1. The PR page has an **Evidence** section with each step's before and after side by side, the commit each was captured at, and earlier captures from past review rounds. After teardown, the same view is in the **Archived** section, because the captures move into `_archive/` with the rest of the initiative.
+
 ### Your part
 
 You only ever do three things:
@@ -249,21 +271,22 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 
 | Command | What it does |
 |---|---|
-| `doctor` | Check git, gh, auth, base branch, agent-teams flag |
+| `doctor` | Check git, gh, auth, base branch, agent-teams flag (and the capture tools when a PR uses evidence) |
 | `init <slug> --base <b>` | Create an initiative and make it current |
-| `add <id> <slug> --title … [--parent] [--model opus] [--conflicts-with] [--early-start]` | Add a PR |
+| `add <id> <slug> --title … [--parent] [--model opus] [--conflicts-with] [--early-start] [--evidence screenshots\|video]` | Add a PR |
 | `validate` | Check the plan; regenerate PLAN.md and board.html |
 | `next` | What to assign now |
 | `show <id> [--json]` | A PR's frontmatter and paths |
 | `assign <id> --worker <name>` | Create the worktree and branch; mark in-progress |
 | `spawn-prompt <id> [--worker]` | Print the worker's spawn prompt |
 | `check <id> [--cmd …]` | Merge the latest base into a throwaway copy and run the checks |
-| `open <id>` | Push and open a draft PR (or re-enter director review) |
+| `open <id> [--skip-evidence "…"]` | Push and open a draft PR (or re-enter director review) |
 | `review <id> --file f --verdict v [--summary] [--no-post]` | Post the review, record the round, log it |
 | `feedback <id> --from-gh [--author] \| --file f` | Record your feedback verbatim in the spec, and log it |
 | `log review\|feedback\|replan "…" [--file f]` | Timestamped director LOG entry |
 | `status <id> <status> [--reason]` | Statuses without a dedicated command |
-| `ready <id>` | Mark the draft ready; release the worker |
+| `ready <id> [--skip-evidence "…"]` | Mark the draft ready; release the worker |
+| `evidence add\|script\|ls <id>` | Record, register and list a PR's before/after captures |
 | `propagate <id>` | Merge a parent into its children, parent first |
 | `merged <id>` | Verify the merge on GitHub; retarget children |
 | `teardown` | Archive the finished initiative |
