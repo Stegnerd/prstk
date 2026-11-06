@@ -88,6 +88,7 @@ func cmdDoctor(a *App) error {
 	if a.doctorPrstk() {
 		failed++
 	}
+	failed += a.doctorAgents()
 	if failed > 0 {
 		return fmt.Errorf("%d check(s) failed", failed)
 	}

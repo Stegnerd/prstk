@@ -204,6 +204,14 @@ func (a *App) rootCmd() *cobra.Command {
 	c.Flags().BoolVar(&serve, "serve", false, "serve the live board")
 	c.Flags().IntVar(&port, "port", 7777, "live board port")
 
+	var setup setupOpts
+	c = cmd("setup", "Install the agent definitions into ~/.claude/agents and create the repo's config.yaml", 0, func([]string) error {
+		return cmdSetup(a, setup)
+	})
+	c.Flags().StringVar(&setup.link, "link", "", "symlink the agents to a prstk `checkout` instead of copying them (for developing prstk)")
+	c.Flags().BoolVar(&setup.force, "force", false, "replace agent files that setup didn't write, and symlinks")
+	c.Flags().StringVar(&setup.agentsDir, "agents-dir", "", "install into `dir` (default ~/.claude/agents)")
+
 	cmd("doctor", "Check git, gh, auth, base branch, and the agent-teams flag", 0, func([]string) error {
 		return cmdDoctor(a)
 	})

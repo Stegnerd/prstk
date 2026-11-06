@@ -55,6 +55,7 @@ func (c capEnv) doctor(t *testing.T, e *env, cwd string) (string, int) {
 	if c.userHome != "" {
 		a.UserHome = c.userHome
 	}
+	installTestAgents(t, a.UserHome)
 	code := a.Run([]string{"doctor"})
 	return o.String(), code
 }

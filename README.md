@@ -49,46 +49,44 @@ Turn on agent teams in your **Claude Code user settings**, `~/.claude/settings.j
 
 If `settings.json` already exists, add the key to its existing `env` object (or add an `env` object) rather than replacing the file. The value must be the string `"1"`. Restart Claude Code afterwards. `prstk doctor` reads the variable from its own environment, so to check it, run `doctor` from Claude Code's shell, or export the variable in your terminal just for that check.
 
-### 2. Install the CLI
+### 2. Install the CLI and the agents
 
 ```sh
 go install github.com/Stegnerd/prstk/cmd/prstk@latest   # installs to $(go env GOPATH)/bin/prstk
-prstk --help                                            # should list review and log among the commands
+cd <your-repo>                                          # the repo you want to work on
+prstk setup
 ```
 
 Make sure `$(go env GOPATH)/bin` is on your PATH.
 
-Or install from a clone. The agent definitions in step 3 live in the repo, so you need a clone anyway:
+`prstk setup` needs no clone: the agent definitions are embedded in the binary. It:
+
+- installs `prstk-director.md` and `prstk-worker.md` into `~/.claude/agents/`, each with a one-line marker comment after the frontmatter (`--agents-dir <dir>` installs somewhere else);
+- when run inside a git repo with an `origin`, creates that repo's `~/.pr-plans/<owner>-<repo>/config.yaml` with defaults (see step 5). It never overwrites an existing one, even with `--force`; run it from outside a repo and it skips this part;
+- warns, and never edits `~/.claude/settings.json`, if agent teams aren't turned on (step 1);
+- reminds you to start Claude with `claude --add-dir ~/.pr-plans`.
+
+Agent definitions are read when a session starts, so **start a fresh session** after running it.
+
+**Upgrading** is `go install github.com/Stegnerd/prstk/cmd/prstk@latest && prstk setup`. Run `setup` again after every upgrade: `prstk doctor` warns when the installed definitions are out of date with the binary.
+
+`setup` overwrites copies that carry its marker (so local edits to them are lost), and refuses to touch a file it didn't write, or a symlink, unless you pass `--force`. If you installed the definitions by hand before `prstk setup` existed (a plain copy, no marker), run `prstk setup --force` once.
+
+> **Don't reinstall while an initiative is running.** The director and its workers use the `prstk` on your PATH, and swapping it mid-run changes the tool under them. Reinstall between initiatives. To try a change during a run, build it to a temp path instead: `go build -o /tmp/prstk-dev ./cmd/prstk`. `prstk setup` warns if the repo has an active initiative: a running director and its workers keep their already-loaded definitions until their next session.
+
+### 3. Developing prstk itself
+
+If you work on prstk, link the agent definitions to your clone instead of copying them, so every change to `agents/*.md` takes effect in your next session with nothing to resync:
 
 ```sh
 git clone https://github.com/Stegnerd/prstk.git
 cd prstk
 go install ./cmd/prstk
+prstk setup --link <path-to-clone>      # add --force to replace existing copies or links
+ls -l ~/.claude/agents/prstk-*.md       # each should show "-> .../prstk/agents/..."
 ```
 
-Below, `<path-to-prstk>` means wherever you cloned it.
-
-> **Don't reinstall while an initiative is running.** The director and its workers use the `prstk` on your PATH, and swapping it mid-run changes the tool under them. Reinstall between initiatives. To try a change during a run, build it to a temp path instead: `go build -o /tmp/prstk-dev ./cmd/prstk`.
-
-### 3. Symlink the agent definitions
-
-Claude Code loads agent definitions from `~/.claude/agents/`. **Symlink** them to the copies in this repo; don't copy them. With a symlink, every merged change to `agents/*.md` takes effect in your next session, with nothing to resync.
-
-```sh
-mkdir -p ~/.claude/agents
-ln -sf <path-to-prstk>/agents/prstk-director.md ~/.claude/agents/prstk-director.md
-ln -sf <path-to-prstk>/agents/prstk-worker.md   ~/.claude/agents/prstk-worker.md
-```
-
-Check them:
-
-```sh
-ls -l ~/.claude/agents/prstk-*.md     # each should show "-> .../prstk/agents/..."
-```
-
-`ln -sf` replaces any existing plain copies. A plain copy is how the first two runs went stale: the repo's definitions were updated, but `~/.claude/agents` still held the old ones.
-
-Agent definitions are read when a session starts, so **start a fresh session** after changing them.
+`prstk doctor` shows `linked to <path>` for a link, and warns when your checkout differs from the installed binary's version (normal while developing).
 
 ### 4. Check the target repo
 
@@ -103,11 +101,11 @@ Then run, from inside that repo:
 prstk doctor
 ```
 
-It checks git, gh, gh auth, that the base branch exists on origin, and the agent-teams flag. It also always prints `playwright` (needs `npx`, which comes with Node, and the Chromium build for the pinned `playwright@1.64.1`; doctor prints the install command if it's missing) and `vhs` lines, which only warn and never fail doctor: they matter only for PRs with audit evidence. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
+It checks git, gh, gh auth, that the base branch exists on origin, the agent-teams flag, and that the agent definitions in `~/.claude/agents` are installed and up to date (`prstk setup` fixes a red or yellow `agents` line). It also always prints `playwright` (needs `npx`, which comes with Node, and the Chromium build for the pinned `playwright@1.64.1`; doctor prints the install command if it's missing) and `vhs` lines, which only warn and never fail doctor: they matter only for PRs with audit evidence. `doctor` checks the base branch named by `default_base` in that repo's `config.yaml` (which `prstk setup` fills in from origin's default branch), falling back to `develop` when there is no config. If the line is red because the base is wrong, fix `default_base` in the config (see below).
 
 ### 5. Optional per-repo config
 
-`~/.pr-plans/<owner>-<repo>/config.yaml`:
+`prstk setup` (run inside the repo) creates `~/.pr-plans/<owner>-<repo>/config.yaml` with defaults and the other keys commented out. The file, with every key:
 
 ```yaml
 default_base: develop       # base branch when init has no --base
@@ -276,7 +274,8 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 
 | Command | What it does |
 |---|---|
-| `doctor` | Check git, gh, auth, base branch, agent-teams flag (and the capture tools, warning only) |
+| `setup [--link <checkout>] [--force] [--agents-dir <dir>]` | Install the embedded agent definitions into `~/.claude/agents` and, inside a repo, create its `config.yaml` (never overwrites one) |
+| `doctor` | Check git, gh, auth, base branch, agent-teams flag, installed agent definitions (and the capture tools, warning only) |
 | `init <slug> --base <b>` | Create an initiative and make it current |
 | `add <id> <slug> --title … [--parent] [--model opus] [--conflicts-with] [--early-start] [--evidence screenshots\|video]` | Add a PR |
 | `validate` | Check the plan; regenerate PLAN.md and board.html |
