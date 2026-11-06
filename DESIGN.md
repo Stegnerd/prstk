@@ -195,7 +195,7 @@ Optional proof that a user-visible change works: screenshots (or video) of the s
 - `prstk open`: needs a before capture (a before video for `video`). A refused open changes nothing.
 - `prstk ready`: before the evidence gate, `ready` always needs the latest director round to be `approved` (not `approved with nits`) and no commits on the branch beyond `origin/<branch>`; `--skip-evidence` bypasses neither. The evidence gate then needs, at the worktree HEAD, an after for every before step, **at least one after at HEAD even when the open gate was skipped**, and an after video for `video`. HEAD must also equal `origin/<branch>` (no fetch; if not, run `prstk open` and get it re-reviewed). New commits therefore make earlier afters stale, and the fix flow re-captures after the next approval.
 
-`prstk open` adds a line to a new PR's description saying it has audit evidence and pointing at the board. `prstk doctor` prints `playwright` (npx) and `vhs` lines when a live PR has evidence, and only warns when one is missing.
+`prstk open` adds a line to a new PR's description saying it has audit evidence and pointing at the board. `prstk doctor` always prints `playwright` and `vhs` lines (with a "only needed for PRs with audit evidence" note when no live PR has evidence) and only warns when one is missing: `playwright` checks for `npx` and for the Chromium build the pinned `playwright@1.64.1` needs, and prints the install command on a miss.
 
 ### `config.yaml` (per repo, optional)
 
@@ -312,7 +312,7 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 | `prstk propagate <id>` | For each descendant in parent-first order: requires clean worktree, runs `git merge --no-ff <parent-branch>` in the child's worktree. Clean merge → push. Conflict → `git merge --abort`, set child `fix-pending` with reason listing conflicted files, skip that child's subtree, continue with others. Prints summary. |
 | `prstk merged <id>` | Verifies via `gh pr view --json state,mergedAt`. Sets `merged`. For each child: `gh pr edit <child> --base <base_branch>`. Updates stack nav. Removes the merged PR's worktree (refuses if dirty). |
 | `prstk board [--serve] [--port 7777]` | Without `--serve`: writes `board.html`. With `--serve`: live board (§10). |
-| `prstk doctor` | Checks `git`, `gh` installed; `gh auth status`; base branch exists on remote; agent-teams flag set in env or `~/.claude/settings.json`. When a live PR has evidence, also prints `playwright` (`npx` on PATH) and `vhs` lines; a missing capture tool warns and never fails doctor. |
+| `prstk doctor` | Checks `git`, `gh` installed; `gh auth status`; base branch exists on remote; agent-teams flag set in env or `~/.claude/settings.json`. Always prints `playwright` (`npx` on PATH, and the pinned Chromium revision in Playwright's browser cache, with the install command if absent) and `vhs` lines; a missing capture tool warns and never fails doctor. |
 | `prstk teardown` | Refuses unless every PR is `merged` or `abandoned` and every worktree is clean. Also refuses if `_archive/<initiative>` already exists (dir or file). Appends the teardown LOG entry, regenerates PLAN.md and board.html, removes the worktrees, deletes `.lock`, `.prstk.log` and the empty `worktrees/`, then moves the initiative dir to `_archive/<initiative>/` with a single rename and clears `current`. If any step fails the initiative stays where it was, and re-running teardown completes it. |
 
 ### Stack nav block (in every PR body)
