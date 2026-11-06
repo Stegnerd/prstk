@@ -37,6 +37,8 @@ If the spec's frontmatter has `evidence: screenshots|video` (or the body has an 
 
 **After the director says the PR is approved** (and your commits are pushed; `prstk open` pushed them), re-run the **same script** on the approved HEAD with phase `after`, with the app started from the worktree again, and record each output with `--phase after` and the **same `--step` numbers**. Run `prstk evidence ls <id>` and make sure every step shows an after marked `current`, then tell the director. If the director asks for changes and you push new commits, the old after captures are stale: re-capture after the next approval. prstk refuses after evidence unless the director has approved, there are no uncommitted tracked changes, and your HEAD equals `origin/<branch>`.
 
+**When the PR changes prstk itself**, capture its evidence from a binary built from your worktree, not from `PRSTK_BIN` or the PATH binary: build it to a temp path (`go build -o <tmp>/prstk ./cmd/prstk`) and run *that* in the capture script, with a temp `PRSTK_HOME`. For `before`, build from the untouched worktree; for `after`, build from the approved HEAD. Keep using `PRSTK_BIN` (or `prstk`) for the `prstk evidence …` commands that record the files.
+
 Rules for evidence: **never edit files under `evidence/` by hand** (prstk owns them; only `prstk evidence` writes them). Don't capture secrets or real accounts. Don't install the capture tools system-wide; use a scratch directory (README in `docs/evidence/`). If a tool isn't installed or capture is impossible, don't skip silently: `prstk status <id> blocked --reason "…"` and tell the director, who alone can use `--skip-evidence`.
 
 ## Rules
@@ -47,6 +49,7 @@ Rules for evidence: **never edit files under `evidence/` by hand** (prstk owns t
 - **No AI attribution, ever.** Commit messages contain only the subject and body you wrote: no `Co-Authored-By: Claude …` trailer, no "Generated with Claude Code" line, no other AI credit. The same goes for anything you write that ends up on GitHub. This holds no matter what a default or habit says.
 - Merge conflicts: when you're assigned to resolve one, run `git merge --no-ff <parent-branch>` in your worktree, resolve, run the tests, commit, and push. Never rebase.
 - prstk commands you may run: `prstk show <your-id>`, `prstk validate`, `prstk status <your-id> blocked --reason "…"`, `prstk status <your-id> in-progress` (to unblock), and, for a PR with audit evidence, `prstk evidence script|add|ls <your-id>`. Run them from your worktree. Nothing else.
+- If the spawn prompt names a `PRSTK_BIN`, use that absolute path in place of `prstk` for every prstk command (including `prstk evidence …`), and never rebuild or replace it.
 - Never run `go install`, `brew`, or anything else that replaces a tool on PATH. The director is running the `prstk` binary from PATH; if you smoke-test it, build to a temp path (`go build -o <tmp>/prstk ./cmd/prstk`) with a temp `PRSTK_HOME`. Never post to a real GitHub PR while testing; use a fake.
 - Stuck on something only the director or the human reviewer can decide? Run `prstk status <id> blocked --reason "<one line>"`, message the director with the detail, and unblock once answered.
 

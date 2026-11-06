@@ -345,6 +345,10 @@ Each file region has exactly one writer:
 - **Pin interfaces in `Provides`.** Children are written against them, so exact signatures, routes and tables save fix rounds.
 - **"Merged #N" means the GitHub PR number, not the prstk PR id.** In the pilot, prstk PR 06 was GitHub #4. The board shows both.
 
+### Dogfooding prstk
+
+To use a dev build for one initiative, build it once (`go build -o ~/.pr-plans/<repo>/bin/prstk-dev ./cmd/prstk`) and start the director with `PRSTK_BIN` set to that absolute path. The director and every worker (via `prstk spawn-prompt`) then run it in place of `prstk`, and `prstk doctor` shows which binary is in play. Never rebuild it mid-initiative. Run the board with it too (`$PRSTK_BIN board --serve`), or the board and the agents will disagree. A PR that changes prstk captures its own before/after evidence from a binary built from its worktree, not from `PRSTK_BIN`.
+
 ---
 
 ## License
