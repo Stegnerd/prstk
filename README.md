@@ -198,6 +198,10 @@ The flow:
 3. **After.** Once the director approves, the worker re-runs the same script on the approved, pushed code and records it with the same step numbers (`prstk evidence add --phase after`). The director checks `prstk evidence ls`.
 4. **Ready.** `prstk ready` needs an after capture at the current HEAD (always at least one, even when the before gate was skipped), and HEAD must equal what is on `origin/<branch>`. New commits make older afters stale, so a fix round re-captures. `--skip-evidence "<reason>"` bypasses a gate, is logged, and is for the director to use only with your say-so or when capture is impossible.
 
+On GitHub: `prstk ready` publishes the captures (`prstk evidence publish <id>`) to an orphan branch in your repo, `prstk-evidence` by default, and posts one comment on the PR with the before/after table, linked to that exact commit. A later publish (after a fix round) edits the same comment. Don't delete the `prstk-evidence` branch, since old links point into it, and never merge it. The branch name is `evidence_branch` in `config.yaml`.
+
+> **Public repo?** Published captures are as public as the repo. Set `evidence_publish: false` in the repo's `config.yaml` to keep them local (on the board only).
+
 Where you see it, in `prstk board --serve`: the PR's card shows a badge (`📷 2/3` is two of three steps with an after capture, `🎬` when there is video, `📷 needs before` before any capture) and a before-to-after strip of step 1. The PR page has an **Evidence** section with each step's before and after side by side, the commit each was captured at, and earlier captures from past review rounds. After teardown, the same view is in the **Archived** section, because the captures move into `_archive/` with the rest of the initiative.
 
 ### Your part

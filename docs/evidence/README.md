@@ -66,6 +66,7 @@ Everything below uses PR `03` as the example. Run `prstk` from the PR's worktree
    ```
 
    `prstk evidence ls 03` should show every step with an `after` that is `current`, not `stale`. Then tell the director. `prstk ready` checks the same thing, and also needs at least one after capture at HEAD (even if the before gate was skipped), plus an after video at HEAD for a `video` PR.
+   At `prstk ready` the director publishes the captures to the repo's `prstk-evidence` branch and links them in one PR comment; workers don't publish.
 
 Never edit anything under `evidence/` by hand; prstk owns it. Re-recording a step just adds a newer capture, and the older one stays visible on the board as an earlier capture.
 
