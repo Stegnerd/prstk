@@ -133,7 +133,7 @@ func (a *App) rootCmd() *cobra.Command {
 		return cmdReview(a, rv)
 	})
 	c.Flags().StringVar(&rv.file, "file", "", "review text `path` (required)")
-	c.Flags().StringVar(&rv.verdict, "verdict", "", "approved or changes-requested (required)")
+	c.Flags().StringVar(&rv.verdict, "verdict", "", "approved, approved-with-nits or changes-requested (required)")
 	c.Flags().StringVar(&rv.summary, "summary", "", "one-line LOG summary (default: first line of the file)")
 	c.Flags().BoolVar(&rv.noPost, "no-post", false, "record locally without posting to GitHub")
 	c.MarkFlagRequired("file")

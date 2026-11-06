@@ -241,11 +241,12 @@ gh repo edit <owner>/<repo> --delete-branch-on-merge
 5. **Open.** `prstk open <id>` pushes the branch and opens a **draft** PR with stack navigation.
 6. **Review.** The director reads `gh pr diff`, writes its findings to a file, and runs:
    ```sh
-   prstk review <id> --file review.md --verdict approved|changes-requested
+   prstk review <id> --file review.md --verdict approved|approved-with-nits|changes-requested
    ```
    That posts a comment review to the PR, adds `### Round N` to the spec and writes the LOG entry, all in one step.
    - Changes needed: `prstk status <id> changes-requested`, message the worker, then re-open and re-review.
-   - Approved: `prstk ready <id>` flips the draft to ready and frees the slot, and reminds the director to **stop the worker with `TaskStop`**, because workers can't exit on their own.
+   - Small fixes only: `--verdict approved-with-nits`. Status doesn't change and the worker stays; it fixes the nits and pushes, the director runs `prstk open <id>`, checks just those commits, and records `--verdict approved --summary "nits fixed"`.
+   - Approved: `prstk ready <id>` (it refuses unless the latest round is a plain approval and every commit is pushed) flips the draft to ready and frees the slot, and reminds the director to **stop the worker with `TaskStop`**, because workers can't exit on their own.
 7. **Your feedback.** `prstk feedback <id> --from-gh` imports your GitHub reviews and comments (with file:line) word for word into `## Review: <reviewer>` (the `reviewer` name from `config.yaml`, default `Human`) and logs it. Chat feedback goes in with `--file`. Then `prstk status <id> fix-pending`, and a **fresh** worker fixes it.
 8. **Propagate.** When a PR that has children gets new commits, `prstk propagate <id>` merges it down the stack. Conflicted children become `fix-pending`.
 9. **Merged.** You say `merged #N`, and `prstk merged <id>` verifies it on GitHub, retargets the children to the base branch, updates the stack navigation and removes the worktree. If a child was merged into its parent's branch, it tells you whether the parent carried it to the base or its changes were left behind.
@@ -281,11 +282,11 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 | `spawn-prompt <id> [--worker]` | Print the worker's spawn prompt |
 | `check <id> [--cmd …]` | Merge the latest base into a throwaway copy and run the checks |
 | `open <id> [--skip-evidence "…"]` | Push and open a draft PR (or re-enter director review) |
-| `review <id> --file f --verdict v [--summary] [--no-post]` | Post the review, record the round, log it |
+| `review <id> --file f --verdict v [--summary] [--no-post]` | Post the review, record the round, log it (`approved`, `approved-with-nits`, `changes-requested`) |
 | `feedback <id> --from-gh [--author] \| --file f` | Record your feedback verbatim in the spec, and log it |
 | `log review\|feedback\|replan "…" [--file f]` | Timestamped director LOG entry |
 | `status <id> <status> [--reason]` | Statuses without a dedicated command |
-| `ready <id> [--skip-evidence "…"]` | Mark the draft ready; release the worker |
+| `ready <id> [--skip-evidence "…"]` | Mark the draft ready; release the worker (needs an approved latest round) |
 | `evidence add\|script\|ls <id>` | Record, register and list a PR's before/after captures |
 | `propagate <id>` | Merge a parent into its children, parent first |
 | `merged <id>` | Verify the merge on GitHub; retarget children |

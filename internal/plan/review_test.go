@@ -199,3 +199,67 @@ func TestAppendEntry(t *testing.T) {
 		t.Errorf("got %q want %q", b, want)
 	}
 }
+
+func TestVerdictKind(t *testing.T) {
+	for text, want := range map[string]string{
+		"approved":                              VerdictApproved,
+		"approved (before PR opened)":           VerdictApproved,
+		"approved with nits":                    VerdictApprovedWithNits,
+		"approved with nits (before PR opened)": VerdictApprovedWithNits,
+		"approved-with-nits":                    VerdictApprovedWithNits,
+		"changes requested":                     VerdictChangesRequested,
+		"changes requested (before PR opened)":  VerdictChangesRequested,
+		"changes-requested":                     VerdictChangesRequested,
+		"  approved  ":                          VerdictApproved,
+		"":                                      VerdictNone,
+		"approved, mostly":                      VerdictNone,
+		"approvedish":                           VerdictNone,
+		"LGTM":                                  VerdictNone,
+		"(before PR opened)":                    VerdictNone,
+	} {
+		if got := VerdictKind(text); got != want {
+			t.Errorf("VerdictKind(%q) = %q, want %q", text, got, want)
+		}
+	}
+	for _, k := range []string{VerdictApproved, VerdictApprovedWithNits, VerdictChangesRequested} {
+		if VerdictKind(VerdictHeading(k)) != k {
+			t.Errorf("heading %q doesn't round-trip to %q", VerdictHeading(k), k)
+		}
+	}
+	if VerdictHeading(VerdictNone) != "" || VerdictHeading("meh") != "" {
+		t.Error("unknown kinds must have no heading")
+	}
+}
+
+func TestLatestDirectorVerdictKind(t *testing.T) {
+	d := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		heading string
+		want    string
+	}{
+		{"approved", VerdictApproved},
+		{"approved" + BeforeOpenedSuffix, VerdictApproved},
+		{"approved with nits", VerdictApprovedWithNits},
+		{"approved with nits" + BeforeOpenedSuffix, VerdictApprovedWithNits},
+		{"changes requested", VerdictChangesRequested},
+		{"changes requested" + BeforeOpenedSuffix, VerdictChangesRequested},
+		{"approved-ish (hand edited)", VerdictNone},
+	} {
+		s := newEvidenceSpec(t)
+		if r, k := s.LatestDirectorVerdictKind(); r != 0 || k != VerdictNone {
+			t.Fatalf("no rounds: (%d, %q)", r, k)
+		}
+		if _, err := s.AppendDirectorRound(d, "changes requested", "x"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AppendDirectorRound(d, tc.heading, "y"); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s.Body(), "### Round 2 (2026-11-04): "+tc.heading+"\n") {
+			t.Fatalf("%q: body:\n%s", tc.heading, s.Body())
+		}
+		if r, k := s.LatestDirectorVerdictKind(); r != 2 || k != tc.want {
+			t.Errorf("%q: got (%d, %q), want (2, %q)", tc.heading, r, k, tc.want)
+		}
+	}
+}

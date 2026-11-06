@@ -97,6 +97,7 @@ func TestFeedbackSkipsUnmarkedDirectorRound(t *testing.T) {
 
 func TestReadyTellsDirectorToStopWorker(t *testing.T) {
 	e := openedPR(t)
+	e.approveID("01")
 	if out := e.run("ready", "01"); !strings.HasSuffix(out, "released w1 · stop teammate w1 now (TaskStop)") {
 		t.Fatalf("out: %s", out)
 	}
@@ -131,6 +132,7 @@ func TestSpawnPrompt(t *testing.T) {
 
 	e.work("01", "main.go", "package main\n")
 	e.run("open", "01")
+	e.approveID("01")
 	e.run("ready", "01")
 	out = e.run("spawn-prompt", "02", "--worker", "w-02")
 	if !strings.Contains(out, "named `w-02`") || !strings.Contains(out, "Use Opus.") || !strings.Contains(out, "Parent notes: "+in.PR("01").NotesPath()+" (PR 01, awaiting-you)") {
@@ -147,6 +149,7 @@ func TestSpawnPrompt(t *testing.T) {
 
 func TestSpawnPromptMergeConflictKeepsReason(t *testing.T) {
 	e := openedPR(t)
+	e.approveID("01")
 	e.run("ready", "01")
 	e.run("status", "01", "fix-pending")
 	// Simulate propagate's conflict record.
@@ -216,10 +219,12 @@ func TestCheckReportsConflicts(t *testing.T) {
 func stackOf2(t *testing.T) *env {
 	e := openedPR(t)
 	e.run("add", "02", "db-layer", "--title", "DB layer", "--parent", "01")
+	e.approveID("01")
 	e.run("ready", "01")
 	e.run("assign", "02", "--worker", "w2")
 	e.work("02", "db.go", "package main\n")
 	e.run("open", "02")
+	e.approveID("02")
 	e.run("ready", "02")
 	return e
 }

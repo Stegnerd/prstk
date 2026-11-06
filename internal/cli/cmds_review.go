@@ -68,14 +68,9 @@ func firstLine(s string) string {
 }
 
 func cmdReview(a *App, o reviewOpts) error {
-	var heading string
-	switch o.verdict {
-	case "approved":
-		heading = "approved"
-	case "changes-requested":
-		heading = "changes requested"
-	default:
-		return usageError{fmt.Sprintf("--verdict must be approved or changes-requested, got %q", o.verdict)}
+	heading := plan.VerdictHeading(o.verdict)
+	if heading == "" {
+		return usageError{fmt.Sprintf("--verdict must be approved, approved-with-nits or changes-requested, got %q", o.verdict)}
 	}
 	body, err := a.readSource(o.file)
 	if err != nil {
@@ -114,7 +109,7 @@ func cmdReview(a *App, o reviewOpts) error {
 		now := a.Now()
 		h := heading
 		if p.PRNumber == 0 {
-			h += " (before PR opened)"
+			h += plan.BeforeOpenedSuffix
 		}
 		round, err := p.AppendDirectorRound(now, h, body)
 		if err != nil {

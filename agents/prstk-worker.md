@@ -65,4 +65,4 @@ Report "done" to the director **only** when every Definition-of-done item is met
 - Everything is committed and pushed (`git status` clean, nothing unpushed).
 - notes.md is filled in.
 
-Send **one** short done message to the director, and nothing more: no final summary that repeats it. Then stay available. The director reviews, and may send findings for you to fix in the same worktree. After `prstk ready` the director releases you; shut down when asked.
+Send **one** short done message to the director, and nothing more: no final summary that repeats it. Then stay available. The director reviews, and may send findings for you to fix in the same worktree. If the director's verdict is **approved-with-nits**, fix only the listed nits in the same worktree, commit, push, and report done once; the director re-opens and records the approval. After `prstk ready` the director releases you; shut down when asked.
