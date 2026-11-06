@@ -33,3 +33,20 @@ func TestLoadConfigReviewer(t *testing.T) {
 		t.Fatalf("with reviewer: %+v %v", c, err)
 	}
 }
+
+func TestEvidenceConfig(t *testing.T) {
+	dir := t.TempDir()
+	c, _ := LoadConfig(dir)
+	if c.EvidenceBranchName() != "prstk-evidence" || !c.PublishEvidence() {
+		t.Fatalf("defaults: %q %v", c.EvidenceBranchName(), c.PublishEvidence())
+	}
+	os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("evidence_branch: audit\nevidence_publish: false\n"), 0o644)
+	c, err := LoadConfig(dir)
+	if err != nil || c.EvidenceBranchName() != "audit" || c.PublishEvidence() {
+		t.Fatalf("set: %+v %v", c, err)
+	}
+	os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("evidence_publish: true\n"), 0o644)
+	if c, _ := LoadConfig(dir); !c.PublishEvidence() {
+		t.Fatal("explicit true")
+	}
+}

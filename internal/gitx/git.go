@@ -4,6 +4,7 @@ package gitx
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -17,8 +18,20 @@ type Git struct {
 
 // Run runs git in dir and returns trimmed stdout.
 func (g Git) Run(dir string, args ...string) (string, error) {
+	return g.RunWith(dir, nil, "", args...)
+}
+
+// RunWith is Run with extra environment entries (e.g. GIT_INDEX_FILE=…)
+// and, when stdin is non-empty, standard input.
+func (g Git) RunWith(dir string, env []string, stdin string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

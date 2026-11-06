@@ -17,6 +17,16 @@ type Fake struct {
 	FeedbackItems map[int][]FeedbackItem
 	// FailOn makes the named method return an error once (for idempotency tests).
 	FailOn map[string]bool
+	// IssueComments holds conversation comments per PR number, oldest
+	// first (Comments, CreateComment and EditComment use it).
+	IssueComments map[int][]FakeComment
+	nextComment   int64
+}
+
+// FakeComment is one conversation comment.
+type FakeComment struct {
+	ID   int64
+	Body string
 }
 
 // FakeReview is one posted review. Kind is "review" or, after the primary
@@ -34,7 +44,7 @@ type FakePR struct {
 }
 
 func NewFake() *Fake {
-	return &Fake{next: 100, PRs: map[int]*FakePR{}, FailOn: map[string]bool{}, FeedbackItems: map[int][]FeedbackItem{}}
+	return &Fake{next: 100, PRs: map[int]*FakePR{}, FailOn: map[string]bool{}, FeedbackItems: map[int][]FeedbackItem{}, IssueComments: map[int][]FakeComment{}, nextComment: 5000}
 }
 
 func (f *Fake) fail(m string) error {
@@ -156,6 +166,56 @@ func (f *Fake) Feedback(repo string, n int) ([]FeedbackItem, error) {
 	}
 	f.Calls = append(f.Calls, fmt.Sprintf("feedback #%d", n))
 	return append([]FeedbackItem(nil), f.FeedbackItems[n]...), nil
+}
+
+func (f *Fake) Comments(repo string, n int) ([]Comment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail("Comments"); err != nil {
+		return nil, err
+	}
+	if _, err := f.get(n); err != nil {
+		return nil, err
+	}
+	var out []Comment
+	for _, c := range f.IssueComments[n] {
+		out = append(out, Comment{ID: c.ID, Body: c.Body})
+	}
+	return out, nil
+}
+
+func (f *Fake) CreateComment(repo string, n int, body string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail("CreateComment"); err != nil {
+		return 0, err
+	}
+	if _, err := f.get(n); err != nil {
+		return 0, err
+	}
+	f.nextComment++
+	id := f.nextComment
+	f.IssueComments[n] = append(f.IssueComments[n], FakeComment{ID: id, Body: body})
+	f.Calls = append(f.Calls, fmt.Sprintf("comment-create #%d → %d", n, id))
+	return id, nil
+}
+
+func (f *Fake) EditComment(repo string, id int64, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail("EditComment"); err != nil {
+		return err
+	}
+	for n, cs := range f.IssueComments {
+		for i := range cs {
+			if cs[i].ID == id {
+				cs[i].Body = body
+				f.Calls = append(f.Calls, fmt.Sprintf("comment-edit #%d %d", n, id))
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no comment %d", id)
 }
 
 func (f *Fake) AuthStatus() error { return nil }
