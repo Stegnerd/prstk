@@ -277,7 +277,7 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 | `validate` | Check the plan; regenerate PLAN.md and board.html |
 | `next` | What to assign now |
 | `show <id> [--json]` | A PR's frontmatter and paths |
-| `assign <id> --worker <name>` | Create the worktree and branch; mark in-progress |
+| `assign <id> --worker <name> [--ignore-conflicts]` | Create the worktree and branch; mark in-progress |
 | `spawn-prompt <id> [--worker]` | Print the worker's spawn prompt |
 | `check <id> [--cmd …]` | Merge the latest base into a throwaway copy and run the checks |
 | `open <id> [--skip-evidence "…"]` | Push and open a draft PR (or re-enter director review) |

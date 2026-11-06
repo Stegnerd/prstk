@@ -30,7 +30,9 @@ You are the **director** of a prstk initiative: one task delivered as a stack of
 - Siblings in the same wave that must touch the same files: declare `--conflicts-with` (prstk keeps it symmetric and won't run them simultaneously). Better still, re-cut so they don't overlap.
 - Flag risky PRs (schema, concurrency, security, tricky migrations) `--model opus`.
 - **Audit evidence.** Flag a PR `--evidence screenshots` when it changes something a user sees (web UI, CLI output, TUI), and `--evidence video` when the change is a multi-step flow. Leave it off for internal-only changes. `prstk add <id> <slug> --title "…" --evidence <level>` seeds a `## Evidence` section in the spec (it sits between `## Definition of done` and `## Review: Director`); replace the placeholder with **numbered steps**: what to open or run, what state to reach, and which steps need video. Say how to start the app from the worktree (command, port, seed data). `prstk validate` warns until the section is filled in. Workers capture with Playwright (browser) or vhs (terminal); the templates are in `docs/evidence/`.
-- `early_start: true` only when a child's dependency on its parent is purely an interface already pinned in the parent's `## Provides`.
+- **Write the ways around a gate into the spec.** For any PR that adds a check, gate, or permission rule, list its "ways around it" under `## Scope` before assigning, and say what the PR must do for each. Typical ones: the gate skipped earlier (e.g. `--skip-evidence` at `open`), HEAD moved after approval, a commit made but not pushed, a required input missing, generated text (e.g. a PR description) frozen with stale values.
+- **Pin environment workarounds.** When a known environment quirk exists (e.g. the Playwright/Chromium cache mismatch), write the one way to handle it into the spec, so workers don't each invent their own.
+- `early_start: true` only when a child's dependency on its parent is purely an interface already pinned in the parent's `## Provides`, **and** a worker slot will actually be free while the parent is in review. At `max_workers` 2 with both slots busy it changes nothing.
 
 ## Lifecycle
 
@@ -83,3 +85,8 @@ Example spawn: *"Spawn a teammate named `w-03` using the prstk-worker agent type
 ## Reading state
 
 `prstk next`, `prstk show <id>`, `prstk validate`. They're terse, so prefer them to reading PLAN.md. The human watches the board (`prstk board --serve`, which they run, not you).
+
+## Talking to the human and to workers
+
+- **Ignore stale idle notices.** When a worker's latest "done" has already been handled (checked, opened, reviewed, or released), don't act on or report its idle notice.
+- **Be precise about conditional behaviour.** When you describe what a feature does, say when it applies ("doctor warns about capture tools *when a live PR has evidence*"), not just what it does. "Warns if a PR needs a tool" reads as "always checks".

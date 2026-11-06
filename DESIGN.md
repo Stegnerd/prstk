@@ -204,7 +204,14 @@ default_base: develop
 max_workers: 2
 setup: "go mod download"   # run in each new worktree after creation
 reviewer: Ada              # human reviewer's name, used in the "## Review: <name>" heading; default "Human"
+check:                     # shell commands `prstk check` runs, in order
+  - go vet ./...
+  - go test ./...
 ```
+
+`check` is the list of shell commands (run with `sh -c` in the throwaway worktree) that `prstk check` runs. When it's empty and the checked tree has a `go.mod`, the defaults are `go vet ./...`, a `gofmt -l .` check that fails if it prints anything, and `go test ./...`; with no `check:` and no `go.mod`, `prstk check` errors unless `--cmd` is given.
+
+`reviewer` names the human reviewer. It becomes the heading `## Review: <reviewer>` that `prstk feedback` writes, and the name used in the fix-worker spawn prompt. When unset it is `Human`; specs that already have a `## Review: <other name>` section keep working.
 
 ---
 
@@ -286,11 +293,14 @@ Output: one line per assignable PR, up to free slots. `--json` available.
 |---|---|
 | `prstk init <slug> [--base <branch>]` | Creates initiative dir, PLAN.md skeleton, LOG.md; sets `current`. Base defaults to `config.default_base`, then `develop`. Fails if base branch doesn't exist on the remote. |
 | `prstk use <initiative>` | Sets `current`. |
-| `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <id,…>] [--evidence screenshots\|video]` | Creates `prs/<id>-<slug>/spec.md` (frontmatter + empty body sections) and empty `notes.md`. Sets `branch`. Adds symmetric `conflicts_with`. `--evidence` sets the spec's `evidence` level and seeds an `## Evidence` section (a placeholder, so `validate` warns until it's filled in); on an existing PR it only sets the level. |
+| `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <id,…>] [--early-start] [--evidence screenshots\|video]` | Creates `prs/<id>-<slug>/spec.md` (frontmatter + empty body sections) and empty `notes.md`. Sets `branch`. Adds symmetric `conflicts_with`. `--early-start` sets `early_start`, allowing the PR to be scheduled before its parent passes director review. `--evidence` sets the spec's `evidence` level and seeds an `## Evidence` section (a placeholder, so `validate` warns until it's filled in); on an existing PR it only sets the level. |
 | `prstk validate` | Runs §9 checks, regenerates PLAN.md block + `board.html`. |
 | `prstk next` | §7. |
 | `prstk show <id>` | Prints frontmatter + paths (spec, notes, worktree). For an evidence PR also `evidence  <level> (<n> before / <m> after)` and `evidence_dir`. `--json` always carries `evidence` and `evidence_dir`. |
-| `prstk assign <id> --worker <name>` | Requires PR to be *ready* or `fix-pending` and a free slot. If no worktree: creates branch from parent branch (or base) and `git worktree add worktrees/<id>`, runs `config.setup`. Sets status `in-progress` (or `fixing` from `fix-pending`), sets `worker`. |
+| `prstk assign <id> --worker <name> [--ignore-conflicts]` | Requires PR to be *ready* or `fix-pending` and a free slot. If no worktree: creates branch from parent branch (or base) and `git worktree add worktrees/<id>`, runs `config.setup`. Sets status `in-progress` (or `fixing` from `fix-pending`), sets `worker`. Refuses while a `conflicts_with` PR is active unless `--ignore-conflicts`. |
+| `prstk spawn-prompt <id> [--worker <name>]` | Prints (read-only, changes no state) the prompt for spawning the PR's worker: teammate name (`--worker`, default the assigned `worker`; errors if neither), agent type `prstk-worker`, model, and the absolute paths of the worktree, spec, notes and the parent's notes, plus branch, PR base and PR number. Adds a paragraph for a fix worker: a merge-conflict fix (`fixing`/`fix-pending` with a `merge conflict` reason), a fix for the reviewer's feedback, or addressing the newest director round (`changes-requested`); and the audit-evidence instructions for an evidence PR. |
+| `prstk check <id> [--cmd "…"]…` | Verifies a PR the way the director would, changing no plan state and pushing nothing. Needs the branch to exist locally. In a **throwaway** detached worktree (never the worker's own, removed afterwards) it merges the PR's latest base (`origin/<base>` after a fetch, or the parent's branch) with `--no-ff`; a conflict aborts the merge, lists the files and fails. It then runs `config.setup` and each check command (`--cmd`, repeatable, replaces `config.yaml` `check:`; see §4 for the Go defaults), printing `✓`/`✗` with timing and the last 40 lines of a failing command. Warns when the worker's worktree has uncommitted changes (only committed work is checked). Exits 1 if the merge, setup, or any check fails. |
+| `prstk feedback <id> (--from-gh [--author <login>] \| --file <path>)` | Records the human reviewer's feedback **verbatim** under `## Review: <reviewer>` in the spec (§4 `reviewer`) and appends a `feedback` LOG entry. Exactly one of `--from-gh` or `--file` (`--author` only with `--from-gh`). `--file` records chat feedback, stamped `· chat`; an empty file is refused. `--from-gh` needs `pr_number > 0` and imports the PR's reviews, comments and inline comments (with `file:line`) as block quotes with markers, so re-running imports only what is new; it skips prstk's own director reviews, empty comment-only review containers, and, with `--author`, other authors. Prints `no new feedback` when nothing is new. Does not change status; it hints `prstk status <id> fix-pending`. |
 | `prstk open <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. A new PR's description gains a line noting its audit evidence. |
 | `prstk status <id> <status> [--reason "…"]` | Generic transition for statuses without a dedicated command. Validates transition legality. `blocked` requires `--reason`. |
 | `prstk ready <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). `gh pr ready`, sets `awaiting-you`, clears `worker`. |
