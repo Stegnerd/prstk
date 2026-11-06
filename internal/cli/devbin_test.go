@@ -13,6 +13,7 @@ func doctorOut(t *testing.T, e *env) (string, int) {
 	var o, er bytes.Buffer
 	a := e.app(e.repo)
 	a.Stdout, a.Stderr = &o, &er
+	installTestAgents(t, a.UserHome)
 	code := a.Run([]string{"doctor"})
 	return o.String(), code
 }
