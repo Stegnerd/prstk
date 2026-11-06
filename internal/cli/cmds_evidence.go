@@ -401,26 +401,3 @@ func evidenceSpawnParagraph(p *plan.Spec) string {
 	}
 	return fmt.Sprintf("This PR needs audit evidence (%s). Before changing any code, follow `## Evidence` in spec.md: write the capture script, register it with `prstk evidence script %s --file <path>`, capture each step and record it with `prstk evidence add %s --phase before --file <path>`. After the director approves, it will ask you to re-run the same script and record `--phase after`.\n", p.Evidence, p.ID, p.ID)
 }
-
-// doctorEvidence prints the capture-tool lines when any live PR uses evidence.
-// A missing tool only warns: a PR needs just one of them.
-func (a *App) doctorEvidence(in *plan.Initiative) {
-	used := false
-	for _, p := range in.PRs {
-		if p.Evidence != plan.EvidenceNone && p.Status != plan.Merged && p.Status != plan.Abandoned {
-			used = true
-		}
-	}
-	if !used {
-		return
-	}
-	tool := func(name, bin, ok, hint string) {
-		if _, err := lookPath(bin); err != nil {
-			a.out("⚠ %-14s %s", name, hint)
-		} else {
-			a.out("✓ %-14s %s", name, ok)
-		}
-	}
-	tool("playwright", "npx", "via npx", "npx not found (install Node, https://nodejs.org); screenshots need Playwright or vhs")
-	tool("vhs", "vhs", "found on PATH", "vhs not found (brew install vhs); video needs vhs or Playwright")
-}

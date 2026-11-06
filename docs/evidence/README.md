@@ -16,7 +16,7 @@ Pick one per PR. If the change shows up in a browser, use Playwright. If it show
 | Playwright | Node (`npx` comes with it) | The template pins `playwright@1.64.1`. Use that exact version: it pins the Chromium revision, and different revisions render slightly differently. |
 | vhs | `brew install vhs` | Also installs `ttyd` and `ffmpeg`, which it needs. Other platforms: see <https://github.com/charmbracelet/vhs>. |
 
-`prstk doctor` prints a `playwright` and a `vhs` line when a live PR has evidence, and warns (never fails) when the tool is missing.
+`prstk doctor` always prints a `playwright` and a `vhs` line, and warns (never fails) when a tool is missing. The `playwright` line checks that `npx` exists and that the Chromium build for the pinned version is installed (it can't see the npm package itself, which lives in your scratch dir), and prints the install command if not. The version and Chromium revision are constants in `internal/cli/doctor_capture.go`; bump them together with this file and the script header.
 
 Do the install outside the worktree, so nothing about capturing lands in the PR. For Playwright:
 

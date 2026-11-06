@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -435,49 +433,6 @@ func TestEvidenceHelpListsCommand(t *testing.T) {
 	}
 	if _, se, code := e.try("evidence", "add", "01", "--phase", "during", "--file", "x.png"); code != 2 || !strings.Contains(se, "prstk evidence add:") {
 		t.Fatalf("bad phase: %d %s", code, se)
-	}
-}
-
-func TestDoctorEvidenceToolsWarnOnly(t *testing.T) {
-	old := lookPath
-	t.Cleanup(func() { lookPath = old })
-	lookPath = func(name string) (string, error) {
-		if name == "git" || name == "gh" {
-			return "/usr/bin/" + name, nil
-		}
-		return "", errors.New("not found")
-	}
-	doctor := func(e *env) (string, int) {
-		var o, er bytes.Buffer
-		a := e.app(e.repo)
-		a.Stdout, a.Stderr = &o, &er
-		a.Getenv = func(string) string { return "1" }
-		code := a.Run([]string{"doctor"})
-		return o.String(), code
-	}
-
-	e := newEnv(t)
-	e.run("init", "ev")
-	e.run("add", "01", "plain", "--title", "Plain")
-	if out, code := doctor(e); code != 0 || strings.Contains(out, "playwright") {
-		t.Fatalf("no evidence PR: %d\n%s", code, out)
-	}
-	e.run("add", "02", "shots", "--title", "Shots", "--evidence", "screenshots")
-	out, code := doctor(e)
-	if code != 0 {
-		t.Fatalf("doctor failed on missing tools: %d\n%s", code, out)
-	}
-	if !strings.Contains(out, "⚠ playwright") || !strings.Contains(out, "install Node") || !strings.Contains(out, "⚠ vhs") || !strings.Contains(out, "brew install vhs") {
-		t.Fatalf("warnings:\n%s", out)
-	}
-	lookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
-	if out, code := doctor(e); code != 0 || !strings.Contains(out, "✓ playwright     via npx") || !strings.Contains(out, "✓ vhs") {
-		t.Fatalf("tools found: %d\n%s", code, out)
-	}
-	// Once the PR is done, the lines go away.
-	e.run("status", "02", "abandoned")
-	if out, _ := doctor(e); strings.Contains(out, "playwright") {
-		t.Fatalf("abandoned PR still triggers tool lines:\n%s", out)
 	}
 }
 
