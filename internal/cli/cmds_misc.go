@@ -81,9 +81,10 @@ func cmdDoctor(a *App) error {
 		check("base branch", err, in.Meta.BaseBranch+" exists on origin ("+in.Name+")")
 	}
 	check("agent teams", a.agentTeamsEnabled(), "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
-	if lerr == nil {
-		a.doctorEvidence(in)
+	if lerr != nil {
+		in = nil
 	}
+	a.doctorEvidence(in)
 	if a.doctorPrstk() {
 		failed++
 	}

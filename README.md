@@ -103,7 +103,7 @@ Then run, from inside that repo:
 prstk doctor
 ```
 
-It checks git, gh, gh auth, that the base branch exists on origin, and the agent-teams flag. When a live PR uses audit evidence it also prints `playwright` (needs `npx`, which comes with Node) and `vhs` lines, and only warns if a tool is missing. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
+It checks git, gh, gh auth, that the base branch exists on origin, and the agent-teams flag. It also always prints `playwright` (needs `npx`, which comes with Node, and the Chromium build for the pinned `playwright@1.64.1`; doctor prints the install command if it's missing) and `vhs` lines, which only warn and never fail doctor: they matter only for PRs with audit evidence. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
 
 ### 5. Optional per-repo config
 
@@ -272,7 +272,7 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 
 | Command | What it does |
 |---|---|
-| `doctor` | Check git, gh, auth, base branch, agent-teams flag (and the capture tools when a PR uses evidence) |
+| `doctor` | Check git, gh, auth, base branch, agent-teams flag (and the capture tools, warning only) |
 | `init <slug> --base <b>` | Create an initiative and make it current |
 | `add <id> <slug> --title … [--parent] [--model opus] [--conflicts-with] [--early-start] [--evidence screenshots\|video]` | Add a PR |
 | `validate` | Check the plan; regenerate PLAN.md and board.html |
