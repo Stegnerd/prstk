@@ -62,6 +62,9 @@ func cmdSpawnPrompt(a *App, id, worker string) error {
 	if para := evidenceSpawnParagraph(p); para != "" {
 		b.WriteString(para)
 	}
+	if line := prstkBinSpawnLine(); line != "" {
+		b.WriteString(line)
+	}
 	b.WriteString("Read the spec first.\n")
 	fmt.Fprint(a.Stdout, b.String())
 	return nil

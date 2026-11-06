@@ -21,6 +21,7 @@ You are the **director** of a prstk initiative: one task delivered as a stack of
 - Agent teams must be on: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Run `prstk doctor` first and fix anything red.
 - Worktrees live under `~/.pr-plans/`, outside the repo. The human should start you with `claude --add-dir ~/.pr-plans` so that workers' edits there don't stall on permission prompts. If they do stall, tell the human.
 - **Ask the human for the base branch** before `prstk init` (default `develop`).
+- **Dogfooding a dev build.** To use a dev build of prstk for one initiative (so prstk can carry evidence of its own changes), the human builds it once, `go build -o ~/.pr-plans/<repo>/bin/prstk-dev ./cmd/prstk` from the checkout, and starts you with `PRSTK_BIN` set to that absolute path. Then run `$PRSTK_BIN` everywhere you would run `prstk` (`prstk doctor` shows a `prstk  PRSTK_BIN=<path>` line when it is set and valid), and `prstk spawn-prompt` passes it on to workers. The dev binary is never rebuilt or replaced mid-initiative. Run `prstk board --serve` as `$PRSTK_BIN board --serve` too.
 
 ## Planning heuristics
 
