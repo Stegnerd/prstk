@@ -302,6 +302,28 @@ type Config struct {
 	// Check is the shell commands prstk check runs (default for Go repos:
 	// go vet, gofmt -l, go test).
 	Check []string `yaml:"check"`
+	// EvidenceBranch is the orphan branch prstk evidence publish commits
+	// captures to; "" means DefaultEvidenceBranch.
+	EvidenceBranch string `yaml:"evidence_branch"`
+	// EvidencePublish turns publishing off when false (nil means true), e.g.
+	// for a public repo whose captures mustn't go public.
+	EvidencePublish *bool `yaml:"evidence_publish"`
+}
+
+// DefaultEvidenceBranch is the evidence branch when config.yaml sets none.
+const DefaultEvidenceBranch = "prstk-evidence"
+
+// EvidenceBranchName returns the trimmed EvidenceBranch, or "prstk-evidence".
+func (c Config) EvidenceBranchName() string {
+	if b := strings.TrimSpace(c.EvidenceBranch); b != "" {
+		return b
+	}
+	return DefaultEvidenceBranch
+}
+
+// PublishEvidence reports whether evidence publishing is on (the default).
+func (c Config) PublishEvidence() bool {
+	return c.EvidencePublish == nil || *c.EvidencePublish
 }
 
 // DefaultReviewer is the human reviewer's name when config.yaml sets none.

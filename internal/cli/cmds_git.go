@@ -271,7 +271,7 @@ func cmdOpen(a *App, id string, skipEvidence *string) error {
 	})
 }
 
-func cmdReady(a *App, id string, skipEvidence *string) error {
+func cmdReady(a *App, id string, skipEvidence *string, noPublish bool) error {
 	return a.mutate(func(in *plan.Initiative) (string, error) {
 		p := in.PR(id)
 		if p == nil {
@@ -293,6 +293,10 @@ func cmdReady(a *App, id string, skipEvidence *string) error {
 		if err := a.evidenceGate(in, p, "ready", skipEvidence); err != nil {
 			return "", err
 		}
+		published, err := a.readyPublish(in, p, noPublish)
+		if err != nil {
+			return "", err
+		}
 		info, err := a.GH.View(in.Meta.Repo, p.PRNumber)
 		if err != nil {
 			return "", err
@@ -312,7 +316,7 @@ func cmdReady(a *App, id string, skipEvidence *string) error {
 		if err := in.AppendLog(now, "ready", fmt.Sprintf("%s #%d ready for review; %s released", id, p.PRNumber, orDash(worker))); err != nil {
 			return "", err
 		}
-		msg := fmt.Sprintf("%s #%d ready for review · awaiting-you · released %s", id, p.PRNumber, orDash(worker))
+		msg := fmt.Sprintf("%s #%d ready for review · awaiting-you · released %s", id, p.PRNumber, orDash(worker)) + published
 		if worker != "" {
 			msg += fmt.Sprintf(" · stop teammate %s now (TaskStop)", worker)
 		}

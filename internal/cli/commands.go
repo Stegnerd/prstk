@@ -91,6 +91,7 @@ func (a *App) rootCmd() *cobra.Command {
 
 	var openCmd, readyCmd *cobra.Command
 	var skipOpen, skipReady string
+	var noPublish bool
 	openCmd = cmd("open <id>", "Push and open a draft PR (or re-enter director review)", 1, func(args []string) error {
 		skip, err := skipReason(openCmd, skipOpen)
 		if err != nil {
@@ -104,9 +105,10 @@ func (a *App) rootCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return cmdReady(a, args[0], skip)
+		return cmdReady(a, args[0], skip, noPublish)
 	})
 	readyCmd.Flags().StringVar(&skipReady, "skip-evidence", "", "bypass the audit-evidence gate, with a `reason` (logged)")
+	readyCmd.Flags().BoolVar(&noPublish, "no-publish", false, "don't publish audit evidence to the evidence branch and PR comment (logged)")
 	cmd("propagate <id>", "Merge each parent into its children, parent-first", 1, func(args []string) error {
 		return cmdPropagate(a, args[0])
 	})
@@ -189,6 +191,9 @@ func (a *App) rootCmd() *cobra.Command {
 		return cmdEvidenceLs(a, args[0])
 	})
 	jsonFlag(c)
+	evSub("publish <id>", "Push a PR's current captures to the evidence branch and link them in a PR comment", func(args []string) error {
+		return cmdEvidencePublish(a, args[0])
+	})
 
 	// ---- board / maintenance ----
 	var serve bool

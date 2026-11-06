@@ -39,7 +39,20 @@ type Client interface {
 	// Feedback lists PR n's reviews, inline review comments and conversation
 	// comments, oldest first.
 	Feedback(repo string, n int) ([]FeedbackItem, error)
+	// Comments lists PR n's conversation (issue) comments, oldest first.
+	Comments(repo string, n int) ([]Comment, error)
+	// CreateComment posts body as a new conversation comment on PR n and
+	// returns its id.
+	CreateComment(repo string, n int, body string) (int64, error)
+	// EditComment replaces the body of conversation comment id.
+	EditComment(repo string, id int64, body string) error
 	AuthStatus() error
+}
+
+// Comment is one conversation comment on a PR.
+type Comment struct {
+	ID   int64
+	Body string
 }
 
 // FeedbackItem is one piece of human feedback on a PR.
@@ -221,5 +234,51 @@ func (e Exec) Feedback(repo string, n int) ([]FeedbackItem, error) {
 
 func (e Exec) AuthStatus() error {
 	_, err := e.run("", "auth", "status")
+	return err
+}
+
+func (e Exec) Comments(repo string, n int) ([]Comment, error) {
+	raw, err := apiList[struct {
+		ID   int64  `json:"id"`
+		Body string `json:"body"`
+	}](e, fmt.Sprintf("repos/%s/issues/%d/comments", repo, n))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Comment, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, Comment{ID: c.ID, Body: c.Body})
+	}
+	return out, nil
+}
+
+// apiBody sends {"body": body} to path with method and returns the id from
+// the response.
+func (e Exec) apiBody(method, path, body string) (int64, error) {
+	in, err := json.Marshal(struct {
+		Body string `json:"body"`
+	}{body})
+	if err != nil {
+		return 0, err
+	}
+	out, err := e.run(string(in), "api", "-X", method, path, "--input", "-")
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		return 0, fmt.Errorf("gh api %s %s: %w", method, path, err)
+	}
+	return resp.ID, nil
+}
+
+func (e Exec) CreateComment(repo string, n int, body string) (int64, error) {
+	return e.apiBody("POST", fmt.Sprintf("repos/%s/issues/%d/comments", repo, n), body)
+}
+
+func (e Exec) EditComment(repo string, id int64, body string) error {
+	_, err := e.apiBody("PATCH", fmt.Sprintf("repos/%s/issues/comments/%d", repo, id), body)
 	return err
 }
