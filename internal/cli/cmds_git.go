@@ -283,6 +283,13 @@ func cmdReady(a *App, id string, skipEvidence *string) error {
 		if p.Status != plan.DirectorReview {
 			return "", fmt.Errorf("%s is %s; ready needs director-review", id, p.Status)
 		}
+		// Gates, in order. --skip-evidence only bypasses the evidence gate.
+		if err := verdictGate(p); err != nil {
+			return "", err
+		}
+		if err := a.pushedGate(in, p); err != nil {
+			return "", err
+		}
 		if err := a.evidenceGate(in, p, "ready", skipEvidence); err != nil {
 			return "", err
 		}
@@ -311,6 +318,33 @@ func cmdReady(a *App, id string, skipEvidence *string) error {
 		}
 		return msg, nil
 	})
+}
+
+// verdictGate refuses ready unless the latest director round is a plain
+// approval. There is no bypass: the director records an approval instead.
+func verdictGate(p *plan.Spec) error {
+	round, kind := p.LatestDirectorVerdictKind()
+	switch kind {
+	case plan.VerdictApproved:
+		return nil
+	case plan.VerdictApprovedWithNits:
+		return fmt.Errorf("%s's latest review (round %d) is approved-with-nits; once the worker has pushed the fixes, run prstk open %s and prstk review %s --verdict approved", p.ID, round, p.ID, p.ID)
+	case plan.VerdictChangesRequested:
+		return fmt.Errorf("%s's latest review (round %d) is changes-requested; ready needs an approval: once the fixes are pushed, run prstk open %s and prstk review %s --verdict approved", p.ID, round, p.ID, p.ID)
+	}
+	if round == 0 {
+		return fmt.Errorf("%s has no director review yet; ready needs one: run prstk review %s --file <path> --verdict approved", p.ID, p.ID)
+	}
+	return fmt.Errorf("%s's latest review (round %d) isn't a recognized verdict; ready needs an approval: run prstk review %s --file <path> --verdict approved", p.ID, round, p.ID)
+}
+
+// pushedGate refuses ready when the worktree's branch has commits not on
+// origin/<branch>: those weren't pushed, so the approval didn't cover them.
+func (a *App) pushedGate(in *plan.Initiative, p *plan.Spec) error {
+	if a.Git.Unpushed(in.Worktree(p.ID), p.Branch) {
+		return fmt.Errorf("%s's branch %s has commits not on origin/%s, so the worktree is not what was pushed and reviewed; run prstk open %s to push them and re-review (prstk review %s --verdict approved)", p.ID, p.Branch, p.Branch, p.ID, p.ID)
+	}
+	return nil
 }
 
 func orDash(s string) string {

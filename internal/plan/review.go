@@ -280,3 +280,51 @@ func (s *Spec) LatestDirectorVerdict() (int, string) {
 	}
 	return round, verdict
 }
+
+// Verdict kinds parsed from a "### Round N" heading.
+const (
+	VerdictNone             = ""
+	VerdictApproved         = "approved"
+	VerdictApprovedWithNits = "approved-with-nits"
+	VerdictChangesRequested = "changes-requested"
+)
+
+// BeforeOpenedSuffix is appended to a round heading recorded while the PR had
+// no GitHub PR yet.
+const BeforeOpenedSuffix = " (before PR opened)"
+
+// VerdictHeading is the heading text prstk review writes for a verdict kind
+// ("approved", "approved with nits", "changes requested"), or "" for an
+// unknown kind.
+func VerdictHeading(kind string) string {
+	switch kind {
+	case VerdictApproved:
+		return "approved"
+	case VerdictApprovedWithNits:
+		return "approved with nits"
+	case VerdictChangesRequested:
+		return "changes requested"
+	}
+	return ""
+}
+
+// VerdictKind normalizes a round heading's verdict text to a Verdict*
+// constant. It drops the " (before PR opened)" suffix and accepts the spaced
+// form prstk writes or the hyphenated kind itself. Anything else, including
+// hand-edited text, is VerdictNone.
+func VerdictKind(text string) string {
+	t := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), strings.TrimSpace(BeforeOpenedSuffix)))
+	for _, k := range []string{VerdictApproved, VerdictApprovedWithNits, VerdictChangesRequested} {
+		if t == k || t == VerdictHeading(k) {
+			return k
+		}
+	}
+	return VerdictNone
+}
+
+// LatestDirectorVerdictKind returns the round number and the normalized kind
+// of the newest round (ignores the " (before PR opened)" suffix).
+func (s *Spec) LatestDirectorVerdictKind() (int, string) {
+	round, text := s.LatestDirectorVerdict()
+	return round, VerdictKind(text)
+}

@@ -229,7 +229,9 @@ func cmdEvidenceAdd(a *App, o evidenceAddOpts) error {
 			if p.Status != plan.DirectorReview {
 				return "", fmt.Errorf("%s is %s; after evidence is captured from approved code (director-review, approved). Wait for prstk review %s --file <path> --verdict approved", o.id, p.Status, o.id)
 			}
-			if _, verdict := p.LatestDirectorVerdict(); !strings.HasPrefix(verdict, "approved") {
+			if round, kind := p.LatestDirectorVerdictKind(); kind == plan.VerdictApprovedWithNits {
+				return "", fmt.Errorf("%s's latest review (round %d) is approved-with-nits; after evidence comes once the nits are fixed, pushed and approved (prstk review %s --verdict approved)", o.id, round, o.id)
+			} else if kind != plan.VerdictApproved {
 				return "", fmt.Errorf("the director hasn't approved %s yet; wait for prstk review %s --file <path> --verdict approved, then capture after evidence", o.id, o.id)
 			}
 			if out, err := a.Git.Run(wt, "status", "--porcelain", "--untracked-files=no"); err != nil {

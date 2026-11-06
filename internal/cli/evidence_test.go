@@ -36,7 +36,7 @@ func (e *env) evAdd(phase, name string, extra ...string) (string, string, int) {
 
 func (e *env) approve() {
 	e.t.Helper()
-	e.run("review", "01", "--file", e.writeTemp("r.md", "Looks good.\n"), "--verdict", "approved", "--no-post")
+	e.approveID("01")
 }
 
 func (e *env) logText() string { return e.readFile(e.initiative().LogPath()) }
@@ -126,6 +126,7 @@ func TestEvidenceBeforeOnStackedPR(t *testing.T) {
 	e.run("assign", "01", "--worker", "w1")
 	e.work("01", "a.go", "package a\n")
 	e.run("open", "01")
+	e.approveID("01")
 	e.run("ready", "01")
 	e.run("assign", "02", "--worker", "w2")
 	// The child's branch already holds the parent's commit; that isn't "beyond the start".
@@ -303,8 +304,9 @@ func TestEvidenceSkip(t *testing.T) {
 	e.evAdd("before", "a.png")
 	e.work("01", "main.go", "package main\n")
 	e.run("open", "01")
-	if _, _, code := e.try("ready", "01"); code != 1 {
-		t.Fatal("ready should refuse")
+	e.approve()
+	if _, se, code := e.try("ready", "01"); code != 1 || !strings.Contains(se, "no after evidence") {
+		t.Fatalf("ready should refuse on evidence: %d %s", code, se)
 	}
 	e.run("ready", "01", "--skip-evidence", "docs only")
 	if lg := e.logText(); !strings.Contains(lg, "· evidence · prstk\n01 gate skipped at ready: docs only") || e.status("01") != "awaiting-you" {
@@ -316,6 +318,7 @@ func TestEvidenceGatesIgnoreUnsetLevel(t *testing.T) {
 	e := evPR(t, "")
 	e.work("01", "main.go", "package main\n")
 	e.run("open", "01")
+	e.approve()
 	e.run("ready", "01", "--skip-evidence", "habit") // harmless, and nothing was skipped
 	if strings.Contains(e.logText(), "gate skipped") {
 		t.Fatalf("logged a skip for a PR without evidence:\n%s", e.logText())
@@ -524,5 +527,21 @@ func TestEvidenceAfterNeedsPushedHead(t *testing.T) {
 		t.Fatalf("after open the old capture is stale: %d %s", code, se)
 	}
 	e.run("evidence", "add", "01", "--phase", "after", "--file", e.shot("a3.png"))
+	e.run("ready", "01")
+}
+
+func TestEvidenceAfterRefusedOnNits(t *testing.T) {
+	e := evPR(t, "screenshots")
+	e.evAdd("before", "a.png")
+	e.work("01", "main.go", "package main\n")
+	e.run("open", "01")
+	e.run("review", "01", "--file", e.writeTemp("n.md", "One nit.\n"), "--verdict", "approved-with-nits", "--no-post")
+	if _, se, code := e.evAdd("after", "a2.png"); code != 1 || !strings.Contains(se, "approved-with-nits") {
+		t.Fatalf("after on nits: %d %s", code, se)
+	}
+	e.work("01", "nit.go", "package main\n")
+	e.run("open", "01")
+	e.approve()
+	e.evAdd("after", "a2.png")
 	e.run("ready", "01")
 }

@@ -201,6 +201,7 @@ func TestPilotLifecycle(t *testing.T) {
 	if e.status("01") != "director-review" {
 		t.Fatal("re-open should return to director-review")
 	}
+	e.approveID("01")
 	e.run("ready", "01")
 	if e.gh.PRs[101].IsDraft || e.status("01") != "awaiting-you" || e.initiative().PR("01").Worker != "" {
 		t.Fatal("ready didn't flip draft / release worker")
@@ -225,6 +226,7 @@ func TestPilotLifecycle(t *testing.T) {
 	if !strings.Contains(e.gh.PRs[101].Body, "#102 02 db layer") {
 		t.Fatalf("stack nav not updated on #101:\n%s", e.gh.PRs[101].Body)
 	}
+	e.approveID("02")
 	e.run("ready", "02")
 
 	// 03 (critical 1) then 04 (tie with 06 broken by id).
@@ -260,6 +262,7 @@ func TestPilotLifecycle(t *testing.T) {
 		t.Fatalf("unblock restored %s", e.status("03"))
 	}
 	e.run("open", "03")
+	e.approveID("03")
 	e.run("ready", "03")
 	e.run("assign", "02", "--worker", "fixer")
 	if e.status("02") != "fixing" {
@@ -268,6 +271,7 @@ func TestPilotLifecycle(t *testing.T) {
 	e.work("02", "db/db.go", "package db\n\n// v2 renamed\n")
 	git(t, e.initiative().Worktree("02"), "push")
 	e.run("open", "02")
+	e.approveID("02")
 	e.run("ready", "02")
 
 	out = e.run("propagate", "02")
