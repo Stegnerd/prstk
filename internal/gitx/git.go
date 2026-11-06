@@ -72,6 +72,17 @@ func (g Git) RemoteBranchExists(dir, branch string) bool {
 	return g.OK(dir, "ls-remote", "--exit-code", "--heads", "origin", branch)
 }
 
+// SetUpstream points branch at origin/<branch> in config, without requiring
+// the remote branch to exist, so a plain `git push` works under
+// push.default=simple. Idempotent.
+func (g Git) SetUpstream(dir, branch string) error {
+	if _, err := g.Run(dir, "config", "branch."+branch+".remote", "origin"); err != nil {
+		return err
+	}
+	_, err := g.Run(dir, "config", "branch."+branch+".merge", "refs/heads/"+branch)
+	return err
+}
+
 // Dirty reports uncommitted changes (tracked or untracked) in a worktree.
 func (g Git) Dirty(dir string) (bool, error) {
 	out, err := g.Run(dir, "status", "--porcelain")

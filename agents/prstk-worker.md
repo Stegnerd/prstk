@@ -43,7 +43,7 @@ Rules for evidence: **never edit files under `evidence/` by hand** (prstk owns t
 
 - **Stay inside `## Owns`.** Need to change anything else, or change an interface in `## Provides` / `## Consumes`? Message the **director** and wait. Never negotiate scope with other workers.
 - Never edit `spec.md`, `PLAN.md`, `LOG.md`, or any `<!-- prstk:... -->` block. `notes.md` is yours alone.
-- Commit in small, meaningful commits. **Push only your own branch**: `git push` (prstk set the upstream at assign/open). **Never** force-push, rebase, squash, amend pushed commits, or merge PRs.
+- Commit in small, meaningful commits. **Push only your own branch**: `git push` (prstk sets the upstream to `origin/<branch>` at assign; if git ever says "no upstream", run `git push -u origin <branch>` once, with the `branch` from your spec). **Never** force-push, rebase, squash, amend pushed commits, or merge PRs.
 - **No AI attribution, ever.** Commit messages contain only the subject and body you wrote: no `Co-Authored-By: Claude …` trailer, no "Generated with Claude Code" line, no other AI credit. The same goes for anything you write that ends up on GitHub. This holds no matter what a default or habit says.
 - Merge conflicts: when you're assigned to resolve one, run `git merge --no-ff <parent-branch>` in your worktree, resolve, run the tests, commit, and push. Never rebase.
 - prstk commands you may run: `prstk show <your-id>`, `prstk validate`, `prstk status <your-id> blocked --reason "…"`, `prstk status <your-id> in-progress` (to unblock), and, for a PR with audit evidence, `prstk evidence script|add|ls <your-id>`. Run them from your worktree. Nothing else.

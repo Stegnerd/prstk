@@ -114,8 +114,17 @@ func cmdAssign(a *App, id, worker string, ignoreConflicts bool) error {
 }
 
 // ensureBranch creates p's local branch from its parent's branch, or from
-// origin/<base> when it has no unmerged parent.
+// origin/<base> when it has no unmerged parent. Once the branch exists it
+// always sets the upstream to origin/<branch>, so a worker's plain
+// `git push` works before the remote branch exists.
 func (a *App) ensureBranch(in *plan.Initiative, repo string, p *plan.Spec) error {
+	if err := a.createBranch(in, repo, p); err != nil {
+		return err
+	}
+	return a.Git.SetUpstream(repo, p.Branch)
+}
+
+func (a *App) createBranch(in *plan.Initiative, repo string, p *plan.Spec) error {
 	if a.Git.LocalBranchExists(repo, p.Branch) {
 		return nil
 	}
