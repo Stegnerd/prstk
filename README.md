@@ -101,7 +101,7 @@ Then run, from inside that repo:
 prstk doctor
 ```
 
-It checks git, gh, gh auth, that the base branch exists on origin, the agent-teams flag, and that the agent definitions in `~/.claude/agents` are installed and up to date (`prstk setup` fixes a red or yellow `agents` line). It also always prints `playwright` (needs `npx`, which comes with Node, and the Chromium build for the pinned `playwright@1.64.1`; doctor prints the install command if it's missing) and `vhs` lines, which only warn and never fail doctor: they matter only for PRs with audit evidence. `doctor` checks for `develop` by default. If your base is `main`, a red "base branch" line is expected until you run `prstk init --base main`. Alternatively, set `default_base` in that repo's `config.yaml` (see below).
+It checks git, gh, gh auth, that the base branch exists on origin, the agent-teams flag, and that the agent definitions in `~/.claude/agents` are installed and up to date (`prstk setup` fixes a red or yellow `agents` line). It also always prints `playwright` (needs `npx`, which comes with Node, and the Chromium build for the pinned `playwright@1.64.1`; doctor prints the install command if it's missing) and `vhs` lines, which only warn and never fail doctor: they matter only for PRs with audit evidence. `doctor` checks the base branch named by `default_base` in that repo's `config.yaml` (which `prstk setup` fills in from origin's default branch), falling back to `develop` when there is no config. If the line is red because the base is wrong, fix `default_base` in the config (see below).
 
 ### 5. Optional per-repo config
 
