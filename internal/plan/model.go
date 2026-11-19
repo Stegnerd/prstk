@@ -141,16 +141,23 @@ type PlanMeta struct {
 	Created    time.Time `yaml:"created"`
 	MaxWorkers int       `yaml:"max_workers"`
 	RepoPath   string    `yaml:"repo_path"`
+	// Sessions are the director's Claude Code session ids, recorded as
+	// mutating commands run (for token usage).
+	Sessions []string `yaml:"sessions"`
 }
 
 func (m PlanMeta) node() *yaml.Node {
-	return newMap().
+	b := newMap().
 		add("initiative", scalar(m.Initiative)).
 		add("repo", scalar(m.Repo)).
 		add("base_branch", scalar(m.BaseBranch)).
 		add("created", scalar(m.Created.Truncate(time.Second))).
 		add("max_workers", scalar(m.MaxWorkers)).
-		add("repo_path", scalar(m.RepoPath)).n
+		add("repo_path", scalar(m.RepoPath))
+	if len(m.Sessions) > 0 {
+		b.add("sessions", quotedList(m.Sessions))
+	}
+	return b.n
 }
 
 // Initiative is one loaded plan directory.
@@ -171,6 +178,7 @@ type Initiative struct {
 func (in *Initiative) PlanPath() string    { return filepath.Join(in.Dir, "PLAN.md") }
 func (in *Initiative) LogPath() string     { return filepath.Join(in.Dir, "LOG.md") }
 func (in *Initiative) BoardPath() string   { return filepath.Join(in.Dir, "board.html") }
+func (in *Initiative) UsagePath() string   { return filepath.Join(in.Dir, "usage.json") }
 func (in *Initiative) VerbosePath() string { return filepath.Join(in.Dir, ".prstk.log") }
 func (in *Initiative) LockPath() string    { return filepath.Join(in.Dir, ".lock") }
 func (in *Initiative) PRsDir() string      { return filepath.Join(in.Dir, "prs") }
@@ -308,6 +316,18 @@ type Config struct {
 	// EvidencePublish turns publishing off when false (nil means true), e.g.
 	// for a public repo whose captures mustn't go public.
 	EvidencePublish *bool `yaml:"evidence_publish"`
+	// Prices overrides or adds token prices by model-id prefix, in dollars
+	// per million tokens.
+	Prices map[string]PriceYAML `yaml:"prices"`
+}
+
+// PriceYAML is one config.yaml `prices:` entry ($ per million tokens).
+type PriceYAML struct {
+	Input        float64 `yaml:"input"`
+	CacheWrite5m float64 `yaml:"cache_write_5m"`
+	CacheWrite1h float64 `yaml:"cache_write_1h"`
+	CacheRead    float64 `yaml:"cache_read"`
+	Output       float64 `yaml:"output"`
 }
 
 // DefaultEvidenceBranch is the evidence branch when config.yaml sets none.

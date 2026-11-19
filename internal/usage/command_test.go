@@ -36,13 +36,13 @@ func TestParseInvocations(t *testing.T) {
 
 func TestPRID(t *testing.T) {
 	for cmd, want := range map[string]string{
-		"prstk show 03":                 "03",
+		"prstk show 03":                  "03",
 		"prstk evidence add 02 --step 1": "02",
-		"prstk evidence ls 05":          "05",
-		"prstk evidence":                "",
-		"prstk validate":                "",
-		"prstk add 01 x --title y":      "",
-		"prstk merged 06":               "06",
+		"prstk evidence ls 05":           "05",
+		"prstk evidence":                 "",
+		"prstk validate":                 "",
+		"prstk add 01 x --title y":       "",
+		"prstk merged 06":                "06",
 	} {
 		if got := parseInvocations(cmd)[0].prID(); got != want {
 			t.Errorf("%q: %q, want %q", cmd, got, want)
