@@ -44,11 +44,13 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
       2026-11-01-0900-older.md       # legacy single-file archive (pre-dir teardown; left as is)
       2026-11-03-1415-pokemon-api/   # whole initiative dir, moved here at teardown
         PLAN.md  LOG.md  board.html  # final; LOG ends with the teardown entry
+        usage.json                   # final token usage (refreshed by teardown's last regenerate)
         prs/<id>-<slug>/spec.md, notes.md, evidence/   # evidence moves with the initiative
     2026-11-03-1415-pokemon-api/     # one initiative
       PLAN.md
       LOG.md
       board.html                     # generated static fallback
+      usage.json                     # token usage snapshot, refreshed on every regenerate (§4)
       .prstk.log                     # verbose CLI output
       .lock
       prs/
@@ -87,6 +89,7 @@ The director runs `prstk` directly. There is no "clerk" agent; the CLI's terse o
 | `prs/*/spec.md` body | Director (`### Round N` items inside `## Review: Director` are written by `prstk review`) | Worker, director |
 | `prs/*/notes.md` | Assigned worker only | Director, downstream workers |
 | `prs/*/evidence/` (`evidence.json`, `before/`, `after/`, `script/`) | `prstk` only, via `prstk evidence` (workers run the command; nobody edits the files by hand) | Board, reviewer, director |
+| `usage.json` | `prstk` only (every regenerate) | Board, PR body |
 
 No two writers share a file region. `prstk` touches frontmatter, the `evidence/` directories and marker-delimited generated blocks, and appends `### Round N` items as the last item in `## Review: Director` (via `prstk review`) and entries to the end of `LOG.md`. It never edits anything else in a spec body.
 
@@ -99,6 +102,8 @@ repo: your-org/sample_proj
 base_branch: develop
 created: 2026-11-03T14:15:00-05:00
 max_workers: 2
+repo_path: /Users/you/code/sample_proj
+sessions: ["3ec24c9b-cbf2-4a4a-b836-ac3e5af24b2c"]   # director's Claude Code session ids (prstk writes these)
 ---
 
 # Pokémon API
@@ -111,6 +116,8 @@ max_workers: 2
 (stack tree as Mermaid + status table — owned by prstk, never hand-edited)
 <!-- prstk:generated:end -->
 ```
+
+`sessions` lists the director's Claude Code session ids, for token usage. Every mutating command (`init`, `add`, `assign`, `status`, `board`…: anything that regenerates under the lock) appends `$CLAUDE_CODE_SESSION_ID` when it is set, isn't already listed, and `$CLAUDE_CODE_AGENT` isn't `prstk-worker`; PLAN.md isn't rewritten when nothing changed. In-process teammates inherit the director's environment (agent name and session id), so a worker's mutating command records nothing new. A director restarted in a new session is picked up by its first mutating command; read-only ones (`next`, `show`) don't record, so its tokens since the restart show up only after the next mutating command (they aren't lost). Old PLAN.md files without the key load fine, and the key is omitted while empty.
 
 ### `LOG.md`
 
@@ -199,6 +206,36 @@ Optional proof that a user-visible change works: screenshots (or video) of the s
 
 `prstk open` adds a line to a new PR's description saying it has audit evidence and pointing at the board. `prstk doctor` always prints `playwright` and `vhs` lines (with a "only needed for PRs with audit evidence" note when no live PR has evidence) and only warns when one is missing: `playwright` checks for `npx` and for the Chromium build the pinned `playwright@1.64.1` needs, and prints the install command on a miss.
 
+### `usage.json`
+
+Token usage for the initiative, split between the director and the workers, per PR and in total, with an estimated cost. `prstk` refreshes it after the board on every regenerate (every mutating command, `validate`, and teardown's last regenerate, so the archive keeps the final numbers). A refresh never fails the command: an error (e.g. an unreadable `usage.json`) goes to `.prstk.log` and the old file is kept. Code reads it with `usage.Load` (package `internal/usage`).
+
+**Sources.** Claude Code's transcripts under `$CLAUDE_CONFIG_DIR` (default `~/.claude`): for each recorded session, the director's `projects/*/<session>.jsonl` and its in-process teammates' `projects/*/<session>/subagents/agent-*.jsonl`, named by the sibling `.meta.json` (or the file name `agent-a<name>-<16 hex>.jsonl`). A subagent whose name was assigned in LOG.md is a worker; any other (Explore, a setup helper…) counts as director overhead ("other agents"). Teammates run as separate processes (tmux mode) aren't found.
+
+**Counting.** Assistant messages' `usage`, deduplicated by message id (Claude Code writes one line per content block, all repeating the usage), as input, cache write 5m / 1h (from `usage.cache_creation`; without it, all cache writes count as 5m), cache read and output. `<synthetic>` and zero-usage messages are skipped.
+
+**Window.** The initiative ends at the director's first `prstk teardown` call at or after `created` (a call whose tool result was an error, or whose `--initiative` names another initiative, doesn't count). Each director session starts after its last teardown call before `created`, so planning before `prstk init` in the same conversation counts but a reused session's earlier initiative doesn't. Worker messages count from `created` to the end.
+
+**Attribution.** Workers map to PRs through LOG.md `assign` entries; a name assigned more than once goes, per message, to the PR whose assign of it most recently precedes the message. Director tokens are split by a heuristic: walking the director's messages in time order, tokens pile up until a message runs a prstk command through Bash. A per-PR command (`assign check open review status ready feedback propagate merged show spawn-prompt <id>`, or `evidence <sub> <id>`, with an id of this initiative) sends them to that PR (split evenly between distinct ids); any other prstk command sends them to **overhead**; what is left at the end is overhead. Only prstk in command position counts (`prstk`, a path to `prstk`/`prstk-*`, or `$PRSTK_BIN`, after any `VAR=value`), so `gh pr diff 03` or `cat prs/03-…` don't.
+
+**Cost.** Dollars from a built-in price table (per million tokens, matched by the longest model-id prefix; `config.yaml` `prices:` overrides or adds entries). A model with no price still counts in tokens, is listed in the bucket's `unpriced`, and its cost is left out, so renderers show the cost as partial rather than guess. Costs are estimates; subscription plans aren't billed per token.
+
+**Snapshot.** Claude Code deletes old transcripts, so the file keeps each source file's attributed contribution (`sources`: path, size, mtime, a context fingerprint, teardown calls, contributions). A refresh re-parses a source whose size, mtime or context changed, keeps the stored contribution of one that disappeared (`missing: true`), and re-derives every total. Unchanged files aren't re-read.
+
+```json
+{
+  "version": 1,
+  "updated_at": "2026-11-03T16:02:11-05:00",
+  "total":    {"messages": 412, "tokens": {"input": 900, "cache_write_5m": 0, "cache_write_1h": 610000, "cache_read": 21700000, "output": 167000}, "by_model": {"claude-opus-5-5": {…}}, "cost_usd": 10.46},
+  "director": {…}, "workers": {…}, "overhead": {…},
+  "prs": {"01": {"director": {…}, "workers": {"w-01": {…}, "w-01b": {…}}, "total": {…}}},
+  "warnings": ["no transcript for director session …"],
+  "sources": [{"path": "…/agent-aw-01-….jsonl", "kind": "worker", "session": "…", "agent": "w-01", "size": 436000, "mtime": "…", "context": "…", "contributions": [{"pr": "01", "worker": "w-01", "usage": {…}}]}]
+}
+```
+
+`total` = `director` + `workers`; `director` = `overhead` + every PR's `director`; `workers` = every PR's workers; a PR's `total` = its `director` + its workers.
+
 ### `config.yaml` (per repo, optional)
 
 ```yaml
@@ -211,7 +248,11 @@ evidence_publish: true     # false: never publish captures to GitHub (e.g. a pub
 check:                     # shell commands `prstk check` runs, in order
   - go vet ./...
   - go test ./...
+prices:                    # token prices for usage.json, $ per million tokens, by model-id prefix
+  claude-opus-5-5: {input: 4, cache_write_5m: 5, cache_write_1h: 8, cache_read: 0.2, output: 20}
 ```
+
+`prices` overrides or adds entries of the built-in price table (Anthropic's list as of 2026-10-06: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`). Each entry replaces the whole built-in entry for that key; a model matches the longest key that prefixes its id.
 
 `check` is the list of shell commands (run with `sh -c` in the throwaway worktree) that `prstk check` runs. When it's empty and the checked tree has a `go.mod`, the defaults are `go vet ./...`, a `gofmt -l .` check that fails if it prints anything, and `go test ./...`; with no `check:` and no `go.mod`, `prstk check` errors unless `--cmd` is given.
 

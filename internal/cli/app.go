@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/Stegnerd/prstk/internal/gitx"
 	"github.com/Stegnerd/prstk/internal/plan"
 	"github.com/Stegnerd/prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/usage"
 )
 
 type App struct {
@@ -25,6 +28,10 @@ type App struct {
 	Git            gitx.Git
 	Getenv         func(string) string
 	UserHome       string // for ~/.claude/settings.json in doctor
+	// ClaudeDir is Claude Code's config dir, where the transcripts that
+	// usage.json is built from live. "" means $CLAUDE_CONFIG_DIR, else
+	// UserHome/.claude.
+	ClaudeDir string
 
 	// set per invocation
 	initiativeFlag string
@@ -136,6 +143,9 @@ func (a *App) mutateDir(dir string, fn func(in *plan.Initiative) (string, error)
 		return err
 	}
 	a.attach(in)
+	if err := a.recordSession(in); err != nil {
+		in.Verbose("recording the director session: %v", err)
+	}
 	msg, ferr := fn(in)
 	// Regenerate even on failure: partial progress should be visible.
 	issues, rerr := a.regenerate(dir)
@@ -177,7 +187,88 @@ func (a *App) regenerate(dir string) ([]plan.Issue, error) {
 	if err != nil {
 		return issues, err
 	}
-	return issues, plan.WriteFileAtomic(in.BoardPath(), page)
+	if err := plan.WriteFileAtomic(in.BoardPath(), page); err != nil {
+		return issues, err
+	}
+	a.refreshUsage(in, now)
+	return issues, nil
+}
+
+// recordSession adds the director's Claude Code session id to PLAN.md, so
+// usage.json can find its transcript. Workers are skipped by
+// CLAUDE_CODE_AGENT; in-process teammates inherit the director's
+// environment (agent and session id), so a worker recording is harmless.
+func (a *App) recordSession(in *plan.Initiative) error {
+	if a.Getenv == nil {
+		return nil
+	}
+	id := strings.TrimSpace(a.Getenv("CLAUDE_CODE_SESSION_ID"))
+	if id == "" || a.Getenv("CLAUDE_CODE_AGENT") == "prstk-worker" || slices.Contains(in.Meta.Sessions, id) {
+		return nil
+	}
+	in.Meta.Sessions = append(in.Meta.Sessions, id)
+	return in.SavePlan(nil)
+}
+
+// claudeDir is where Claude Code keeps its transcripts.
+func (a *App) claudeDir() string {
+	if a.ClaudeDir != "" {
+		return a.ClaudeDir
+	}
+	if a.Getenv != nil {
+		if d := a.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+			return d
+		}
+	}
+	if a.UserHome == "" {
+		return ""
+	}
+	return filepath.Join(a.UserHome, ".claude")
+}
+
+// refreshUsage rewrites usage.json from the transcripts. It never fails the
+// command: problems go to the verbose log and the old file is kept.
+func (a *App) refreshUsage(in *plan.Initiative, now time.Time) {
+	defer func() {
+		if r := recover(); r != nil {
+			in.Verbose("usage: panic: %v", r)
+		}
+	}()
+	if err := a.writeUsage(in, now); err != nil {
+		in.Verbose("usage: %v (keeping the old usage.json)", err)
+	}
+}
+
+func (a *App) writeUsage(in *plan.Initiative, now time.Time) error {
+	prev, err := usage.Load(in.UsagePath())
+	if err != nil {
+		return err
+	}
+	logText, err := os.ReadFile(in.LogPath())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	ids := make([]string, len(in.PRs))
+	for i, p := range in.PRs {
+		ids[i] = p.ID
+	}
+	prices := map[string]usage.Price{}
+	for k, v := range in.Config.Prices {
+		prices[k] = usage.Price(v)
+	}
+	r := usage.Collect(usage.Input{
+		ClaudeDir: a.claudeDir(), Initiative: in.Name, Created: in.Meta.Created,
+		Sessions: in.Meta.Sessions, PRs: ids, Assigns: usage.ParseAssigns(string(logText), time.Local),
+		Prices: prices, Now: now,
+	}, prev)
+	for _, w := range r.Warnings {
+		in.Verbose("usage: %s", w)
+	}
+	b, err := r.JSON()
+	if err != nil {
+		return err
+	}
+	return plan.WriteFileAtomic(in.UsagePath(), b)
 }
 
 func (a *App) out(format string, args ...any) {
