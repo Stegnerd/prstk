@@ -12,11 +12,11 @@ import (
 	"github.com/Stegnerd/prstk/internal/usage"
 )
 
-func tok(in, cw, cr, out int64) usage.Tokens {
+func usageTok(in, cw, cr, out int64) usage.Tokens {
 	return usage.Tokens{Input: in, CacheWrite5m: cw * 3 / 4, CacheWrite1h: cw - cw*3/4, CacheRead: cr, Output: out}
 }
 
-func bucket(msgs int, cost float64, byModel map[string]usage.Tokens, unpriced ...string) usage.Bucket {
+func usageBucket(msgs int, cost float64, byModel map[string]usage.Tokens, unpriced ...string) usage.Bucket {
 	b := usage.Bucket{Messages: msgs, CostUSD: cost, ByModel: byModel, Unpriced: unpriced}
 	for _, t := range byModel {
 		b.Tokens.Input += t.Input
@@ -28,7 +28,7 @@ func bucket(msgs int, cost float64, byModel map[string]usage.Tokens, unpriced ..
 	return b
 }
 
-func sum(bs ...usage.Bucket) usage.Bucket {
+func usageSum(bs ...usage.Bucket) usage.Bucket {
 	var out usage.Bucket
 	for _, b := range bs {
 		out.Add(b)
@@ -38,7 +38,7 @@ func sum(bs ...usage.Bucket) usage.Bucket {
 	return out
 }
 
-func writeUsage(t *testing.T, in *plan.Initiative, r *usage.Report) {
+func writeUsageJSON(t *testing.T, in *plan.Initiative, r *usage.Report) {
 	t.Helper()
 	b, err := r.JSON()
 	if err != nil {
@@ -51,28 +51,28 @@ func writeUsage(t *testing.T, in *plan.Initiative, r *usage.Report) {
 
 // sampleReport has usage on PRs 02 (director, two workers incl. a fix worker,
 // one model unpriced), 03 (director only) and 04 (worker only). PR 01 has none.
-func sampleReport() *usage.Report {
-	d02 := bucket(5, 1.00, map[string]usage.Tokens{"claude-opus-5-5": tok(10, 1000, 200_000, 2000)})
-	w02 := bucket(9, 2.00, map[string]usage.Tokens{"claude-sonnet-5-5": tok(20, 4000, 800_000, 9000)})
-	w02b := bucket(3, 0.50, map[string]usage.Tokens{"claude-sonnet-5-5": tok(6, 500, 100_000, 1000), "claude-x-9": tok(1, 100, 10_000, 500)}, "claude-x-9")
-	d03 := bucket(4, 0.40, map[string]usage.Tokens{"claude-opus-5-5": tok(5, 500, 50_000, 800)})
-	w04 := bucket(6, 0.70, map[string]usage.Tokens{"claude-sonnet-5-5": tok(8, 700, 90_000, 1500)})
-	over := bucket(2, 0.10, map[string]usage.Tokens{"claude-opus-5-5": tok(2, 100, 20_000, 300)})
+func sampleUsageReport() *usage.Report {
+	d02 := usageBucket(5, 1.00, map[string]usage.Tokens{"claude-opus-5-5": usageTok(10, 1000, 200_000, 2000)})
+	w02 := usageBucket(9, 2.00, map[string]usage.Tokens{"claude-sonnet-5-5": usageTok(20, 4000, 800_000, 9000)})
+	w02b := usageBucket(3, 0.50, map[string]usage.Tokens{"claude-sonnet-5-5": usageTok(6, 500, 100_000, 1000), "claude-x-9": usageTok(1, 100, 10_000, 500)}, "claude-x-9")
+	d03 := usageBucket(4, 0.40, map[string]usage.Tokens{"claude-opus-5-5": usageTok(5, 500, 50_000, 800)})
+	w04 := usageBucket(6, 0.70, map[string]usage.Tokens{"claude-sonnet-5-5": usageTok(8, 700, 90_000, 1500)})
+	over := usageBucket(2, 0.10, map[string]usage.Tokens{"claude-opus-5-5": usageTok(2, 100, 20_000, 300)})
 	r := &usage.Report{
 		Version:   usage.Version,
 		UpdatedAt: time.Date(2026, 11, 19, 20, 0, 0, 0, time.UTC),
 		PRs: map[string]*usage.PRUsage{
 			"01": {Workers: map[string]usage.Bucket{}},
-			"02": {Director: d02, Workers: map[string]usage.Bucket{"w-02": w02, "w-02b": w02b}, Total: sum(d02, w02, w02b)},
-			"03": {Director: d03, Workers: map[string]usage.Bucket{}, Total: sum(d03)},
-			"04": {Workers: map[string]usage.Bucket{"w-04": w04}, Total: sum(w04)},
+			"02": {Director: d02, Workers: map[string]usage.Bucket{"w-02": w02, "w-02b": w02b}, Total: usageSum(d02, w02, w02b)},
+			"03": {Director: d03, Workers: map[string]usage.Bucket{}, Total: usageSum(d03)},
+			"04": {Workers: map[string]usage.Bucket{"w-04": w04}, Total: usageSum(w04)},
 		},
 		Overhead: over,
-		Director: sum(d02, d03, over),
-		Workers:  sum(w02, w02b, w04),
+		Director: usageSum(d02, d03, over),
+		Workers:  usageSum(w02, w02b, w04),
 		Warnings: []string{"one", "two"},
 	}
-	r.Total = sum(r.Director, r.Workers)
+	r.Total = usageSum(r.Director, r.Workers)
 	return r
 }
 
@@ -104,8 +104,8 @@ func TestBoardWithoutUsageJSON(t *testing.T) {
 
 func TestBoardUsage(t *testing.T) {
 	in := pilot(t)
-	r := sampleReport()
-	writeUsage(t, in, r)
+	r := sampleUsageReport()
+	writeUsageJSON(t, in, r)
 	b := BuildBoard(in, time.Now())
 	u := b.Usage
 	if u == nil {
@@ -157,8 +157,8 @@ func TestBoardUsage(t *testing.T) {
 
 func TestDetailUsageRows(t *testing.T) {
 	in := pilot(t)
-	r := sampleReport()
-	writeUsage(t, in, r)
+	r := sampleUsageReport()
+	writeUsageJSON(t, in, r)
 
 	d, ok := BuildPRDetail(in, "02", time.Now())
 	if !ok || d.Usage == nil {
@@ -215,7 +215,7 @@ func TestDetailUsageRows(t *testing.T) {
 
 func TestDetailUsageDashesAndAbsent(t *testing.T) {
 	in := pilot(t)
-	writeUsage(t, in, sampleReport())
+	writeUsageJSON(t, in, sampleUsageReport())
 
 	d, _ := BuildPRDetail(in, "03", time.Now()) // director only
 	if d.Usage == nil || len(d.Usage.Rows) != 2 || d.Usage.Rows[0].Empty || d.Usage.Rows[1].Label != "Total" {
@@ -271,7 +271,7 @@ func TestUnusableUsageJSONRendersWithoutUsage(t *testing.T) {
 
 func TestStaticPageInlinesUsage(t *testing.T) {
 	in := pilot(t)
-	writeUsage(t, in, sampleReport())
+	writeUsageJSON(t, in, sampleUsageReport())
 	b := BuildBoard(in, time.Now())
 	page, err := BoardPage(PageOpts{Title: "t", Static: true, Data: &b})
 	if err != nil {
