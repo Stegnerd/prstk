@@ -275,8 +275,13 @@ func UsageBlock(pr *usage.PRUsage, updated time.Time) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "<details><summary>Token usage (est.): %s tokens · %s</summary>\n\n",
-		usage.FormatTokens(pr.Total.Tokens.Total()), usageCost(pr.Total, true))
+	// The total keeps cache reads; the summary states them inline.
+	cached := ""
+	if cr := pr.Total.Tokens.CacheRead; cr > 0 {
+		cached = " (" + usage.FormatTokens(cr) + " cached)"
+	}
+	fmt.Fprintf(&b, "<details><summary>Token usage (est.): %s tokens%s · %s</summary>\n\n",
+		usage.FormatTokens(pr.Total.Tokens.Total()), cached, usageCost(pr.Total, true))
 	b.WriteString("| | Input | Cache write | Cache read | Output | Est. cost |\n|---|---|---|---|---|---|\n")
 	row := func(name string, k usage.Bucket, bold, long bool) {
 		t := k.Tokens

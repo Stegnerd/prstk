@@ -392,7 +392,7 @@ To dogfood a dev build of prstk for one initiative, the human builds it once (`g
 
 ```markdown
 <!-- prstk:usage:begin -->
-<details><summary>Token usage (est.): 3.19M tokens · $5.20</summary>
+<details><summary>Token usage (est.): 3.19M tokens (3.10M cached) · $5.20</summary>
 
 | | Input | Cache write | Cache read | Output | Est. cost |
 |---|---|---|---|---|---|
@@ -405,7 +405,7 @@ As of 2026-11-19 16:02. Estimated from Claude Code transcripts; director tokens 
 <!-- prstk:usage:end -->
 ```
 
-The block shows one PR's numbers from `usage.json`: the director's rows, one row per worker (fix workers included), and the total. It sits after the stack-nav block, collapsed in a `<details>`. A total with an unpriced model reads `≥ $X (partial)`.
+The block shows one PR's numbers from `usage.json`: the director's rows, one row per worker (fix workers included), and the total. It sits after the stack-nav block, collapsed in a `<details>`. The summary's token total keeps cache reads and states them inline (`3.19M tokens (3.10M cached)`; omitted when there are none), matching the board strip. A total with an unpriced model reads `≥ $X (partial)`.
 
 - **When it is written.** Wherever prstk writes or edits a PR body: `open` (creating the PR, and the edit of all open PRs), `ready` (best effort, so the reviewer sees the worker's final numbers), and `merged` (the other open PRs). All go through one path that replaces the nav and usage blocks together in a single `gh pr edit --body`, and make no call when the body is unchanged. Only the text between the markers is replaced; a body without the markers gets the block appended at the end.
 - **Fresh numbers.** `regenerate` refreshes `usage.json` after a command's work, but bodies are built during it. So the body path refreshes `usage.json` itself right before building (the same refresh `regenerate` does, at most once per command) and reads the result. If `usage.json` is unreadable, the previous block is left alone.
