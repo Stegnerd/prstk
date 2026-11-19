@@ -157,8 +157,8 @@ prstk board --serve          # http://127.0.0.1:7777  (--port to change)
 ```
 
 - **Index:** every active initiative, plus an **Archived** section.
-- **Board:** a slot bar, status columns, and a stack diagram.
-- **Card → PR page:** frontmatter, the spec, each director review round, your feedback, the worker's `notes.md`, and the log entries for that PR.
+- **Board:** a slot bar, status columns, and a stack diagram. When token usage has been collected, a strip at the top shows the initiative's tokens (with the cache-read part stated inline) and estimated cost, split between the director and the workers, and each card carries a small `tokens · cost` badge. The numbers are as fresh as the last prstk command (the strip says when), and a cost that leaves out a model with no known price reads `≥ $X (partial)`.
+- **Card → PR page:** frontmatter, the spec, each director review round, your feedback, a **Usage** table (director, each worker, total), the worker's `notes.md`, and the log entries for that PR.
 - **Log:** every LOG.md entry, filterable by type and PR.
 
 The board updates live as the files change. If port 7777 is taken, an old board is probably still running. Find it with `lsof -nP -iTCP:7777 -sTCP:LISTEN` and stop it.

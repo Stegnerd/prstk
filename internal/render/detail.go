@@ -229,6 +229,8 @@ type PRDetail struct {
 	Log    []LogEntry `json:"log"`   // entries whose PRs include this id
 	// Evidence shadows Card.Evidence in the JSON; nil when there is none.
 	Evidence *DetailEvidence `json:"evidence,omitempty"`
+	// Usage shadows Card.Usage in the JSON; nil when the PR has no usage yet.
+	Usage *DetailUsage `json:"usage,omitempty"`
 }
 
 // BuildPRDetail builds the detail payload for PR id; false if id is not a PR
@@ -241,9 +243,11 @@ func BuildPRDetail(in *plan.Initiative, id string, now time.Time) (PRDetail, boo
 		return PRDetail{}, false
 	}
 	_ = now // reserved: the card's "since" is rendered relative on the client
+	rep := loadUsage(in)
 	d := PRDetail{
-		Card: buildCard(in, p), Branch: p.Branch, Worker: p.Worker, Model: p.Model, Parent: p.Parent,
+		Card: buildCard(in, p, nil), Branch: p.Branch, Worker: p.Worker, Model: p.Model, Parent: p.Parent,
 		Spec: SplitSpec(p.Body()), Log: []LogEntry{}, Evidence: buildDetailEvidence(p),
+		Usage: buildDetailUsage(rep, p.ID),
 	}
 	d.Card.Evidence = nil // shadowed by d.Evidence; don't read the manifest's summary twice into one payload
 	if b, err := os.ReadFile(p.NotesPath()); err == nil {

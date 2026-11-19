@@ -26,7 +26,7 @@ func samplePRUsage() *usage.PRUsage {
 
 func TestUsageBlockGolden(t *testing.T) {
 	got := UsageBlock(samplePRUsage(), time.Date(2026, 11, 19, 16, 2, 0, 0, time.UTC))
-	want := `<details><summary>Token usage (est.): 3.19M tokens · $5.20</summary>
+	want := `<details><summary>Token usage (est.): 3.19M tokens (3.10M cached) · $5.20</summary>
 
 | | Input | Cache write | Cache read | Output | Est. cost |
 |---|---|---|---|---|---|
@@ -50,7 +50,7 @@ func TestUsageBlockPartialCost(t *testing.T) {
 	pr.Workers["w-03"] = w
 	got := UsageBlock(pr, time.Date(2026, 11, 19, 16, 2, 0, 0, time.UTC))
 	for _, want := range []string{
-		"· ≥ $5.20 (partial)</summary>",
+		"tokens (3.10M cached) · ≥ $5.20 (partial)</summary>",
 		"| Worker w-03 | 60 | 50.0k | 1.00M | 20.0k | ≥ $3.60 |",
 		"| **Total** | **110** | **66.0k** | **3.10M** | **24.5k** | **≥ $5.20 (partial)** |",
 		"| Director | 40 | 15.0k | 2.00M | 4.0k | $1.50 |",
@@ -100,5 +100,13 @@ func TestPRBodyOrder(t *testing.T) {
 	}
 	if strings.Contains(PRBody("d", "nav", ""), UsageBegin) {
 		t.Error("empty usage should add no block")
+	}
+}
+
+func TestUsageBlockNoCacheReads(t *testing.T) {
+	pr := &usage.PRUsage{Total: bucket(1000, 0, 0, 0, 500, 0.2)}
+	got := UsageBlock(pr, time.Date(2026, 11, 19, 16, 2, 0, 0, time.UTC))
+	if !strings.Contains(got, "<summary>Token usage (est.): 1.5k tokens · $0.20</summary>") {
+		t.Errorf("no cached text expected:\n%s", got)
 	}
 }

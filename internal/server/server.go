@@ -284,6 +284,9 @@ func (s *Server) signature(key string) string {
 	}
 	add(filepath.Join(dir, "PLAN.md"))
 	add(filepath.Join(dir, "LOG.md"))
+	// usage.json is refreshed by prstk commands, so its change pushes the
+	// board's usage strip and the PR pages' Usage sections.
+	add(filepath.Join(dir, "usage.json"))
 	add(filepath.Join(filepath.Dir(dir), "config.yaml"))
 	prs, _ := os.ReadDir(filepath.Join(dir, "prs"))
 	for _, p := range prs {

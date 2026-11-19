@@ -467,3 +467,54 @@ func TestPageScriptParses(t *testing.T) {
 		t.Fatalf("page script has a syntax error:\n%s", out)
 	}
 }
+
+func TestArchivedInitiativeWithUsage(t *testing.T) {
+	ts, home := archiveFixture(t)
+	gamma := filepath.Join(plan.ArchiveRoot(filepath.Join(home, repoA)), "2026-11-03-1415-gamma")
+	key := repoA + "/2026-11-03-1415-gamma"
+	usageFile := `{"version":1,"updated_at":"2026-11-03T16:00:00Z",
+ "total":{"messages":3,"tokens":{"input":10,"output":20,"cache_read":1000},"by_model":{"claude-opus-5-5":{"input":10,"output":20,"cache_read":1000}},"cost_usd":0.5},
+ "director":{"messages":3,"tokens":{"input":10,"output":20,"cache_read":1000},"by_model":{"claude-opus-5-5":{"input":10,"output":20,"cache_read":1000}},"cost_usd":0.5},
+ "workers":{"messages":0,"tokens":{}},"overhead":{"messages":0,"tokens":{}},
+ "prs":{"02":{"director":{"messages":3,"tokens":{"input":10,"output":20,"cache_read":1000},"by_model":{"claude-opus-5-5":{"input":10,"output":20,"cache_read":1000}},"cost_usd":0.5},"workers":{},
+  "total":{"messages":3,"tokens":{"input":10,"output":20,"cache_read":1000},"by_model":{"claude-opus-5-5":{"input":10,"output":20,"cache_read":1000}},"cost_usd":0.5}}},
+ "sources":[]}`
+	if err := os.WriteFile(filepath.Join(gamma, "usage.json"), []byte(usageFile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var b render.Board
+	jsonOf(t, ts.URL+"/api/a/"+key, &b)
+	if b.Usage == nil || b.Usage.Total.Tokens != 1030 || b.Usage.Total.CostText != "$0.50" {
+		t.Fatalf("archived board usage: %+v", b.Usage)
+	}
+	withUsage := 0
+	for _, c := range b.Lanes[0].Cards {
+		if c.Usage != nil {
+			withUsage++
+			if c.ID != "02" {
+				t.Errorf("card %s has usage", c.ID)
+			}
+		}
+	}
+	if withUsage != 1 {
+		t.Errorf("cards with usage = %d, want 1", withUsage)
+	}
+	var d render.PRDetail
+	jsonOf(t, ts.URL+"/api/a/"+key+"/pr/02", &d)
+	if d.Usage == nil || len(d.Usage.Rows) != 2 || d.Usage.Rows[0].Label != "Director" {
+		t.Fatalf("archived PR usage: %+v", d.Usage)
+	}
+	var d1 render.PRDetail
+	jsonOf(t, ts.URL+"/api/a/"+key+"/pr/01", &d1)
+	if d1.Usage != nil {
+		t.Errorf("PR 01 has no usage: %+v", d1.Usage)
+	}
+
+	// an archive without usage.json shows nothing
+	var alpha render.Board
+	jsonOf(t, ts.URL+"/api/a/"+repoA+"/2026-11-01-1000-alpha", &alpha)
+	if alpha.Usage != nil {
+		t.Errorf("alpha usage: %+v", alpha.Usage)
+	}
+}
