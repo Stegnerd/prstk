@@ -117,6 +117,18 @@ func TestBoardUsage(t *testing.T) {
 	if !u.Total.Partial || !strings.HasPrefix(u.Total.CostText, "≥ $") || !reflect.DeepEqual(u.Total.Unpriced, []string{"claude-x-9"}) {
 		t.Errorf("total must be partial: %+v", u.Total)
 	}
+	// The total keeps cache reads and states them separately.
+	if u.Total.CacheRead != r.Total.Tokens.CacheRead || u.Total.CacheReadText != usage.FormatTokens(r.Total.Tokens.CacheRead) {
+		t.Errorf("total cache read %d %q", u.Total.CacheRead, u.Total.CacheReadText)
+	}
+	if u.Total.Tokens <= u.Total.CacheRead || u.Total.Tokens != r.Total.Tokens.Total() {
+		t.Errorf("total %d must include cache reads %d", u.Total.Tokens, u.Total.CacheRead)
+	}
+	if u.Director.CacheReadText != usage.FormatTokens(r.Director.Tokens.CacheRead) ||
+		u.Workers.CacheReadText != usage.FormatTokens(r.Workers.Tokens.CacheRead) ||
+		u.Overhead.CacheReadText != usage.FormatTokens(r.Overhead.Tokens.CacheRead) {
+		t.Errorf("cache read texts: %q %q %q", u.Director.CacheReadText, u.Workers.CacheReadText, u.Overhead.CacheReadText)
+	}
 	// director has no unpriced model: a plain cost
 	if u.Director.Partial || u.Director.CostText != usage.FormatUSD(r.Director.CostUSD) {
 		t.Errorf("director: %+v", u.Director)
@@ -146,6 +158,9 @@ func TestBoardUsage(t *testing.T) {
 	}
 	if !c2.Workers.Partial || c2.Director.Partial {
 		t.Errorf("card 02 partial flags: workers %v director %v", c2.Workers.Partial, c2.Director.Partial)
+	}
+	if c2.Total.CacheReadText != usage.FormatTokens(r.PRs["02"].Total.Tokens.CacheRead) || c2.Total.CacheReadText == "" {
+		t.Errorf("card 02 cache read text %q", c2.Total.CacheReadText)
 	}
 	if c3 := card["03"].Usage; c3 == nil || !c3.Workers.Empty || c3.Workers.TokensText != "—" || c3.Director.Empty {
 		t.Errorf("card 03 (director only): %+v", c3)
@@ -286,5 +301,21 @@ func TestStaticPageInlinesUsage(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("template missing %s", want)
 		}
+	}
+}
+
+func TestFigureCacheRead(t *testing.T) {
+	f := figure(usageBucket(1, 0.65, map[string]usage.Tokens{"claude-opus-5-5": usageTok(1000, 90_000, 1_280_000, 5000)}))
+	if f.TokensText != usage.FormatTokens(f.Tokens) || f.CacheReadText != "1.28M" || f.Tokens <= f.CacheRead {
+		t.Errorf("figure: %+v", f)
+	}
+	// No cache reads: no cache-read text, so the page adds no parenthetical.
+	f = figure(usageBucket(1, 0.01, map[string]usage.Tokens{"claude-opus-5-5": usageTok(1000, 0, 0, 500)}))
+	if f.CacheReadText != "" || f.CacheRead != 0 {
+		t.Errorf("figure without cache reads: %+v", f)
+	}
+	// An empty bucket stays dashes.
+	if f = figure(usage.Bucket{}); !f.Empty || f.CacheReadText != "" || f.TokensText != noValue {
+		t.Errorf("empty figure: %+v", f)
 	}
 }

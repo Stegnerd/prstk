@@ -21,10 +21,14 @@ const noValue = "—"
 type UsageFigure struct {
 	Tokens     int64   `json:"tokens"`      // all kinds
 	Output     int64   `json:"output"`      // output tokens
+	CacheRead  int64   `json:"cache_read"`  // cache-read tokens (part of Tokens)
 	CostUSD    float64 `json:"cost_usd"`    // priced models only
 	Partial    bool    `json:"partial"`     // some model has no price: cost undercounts
-	TokensText string  `json:"tokens_text"` // usage.FormatTokens(Tokens)
+	TokensText string  `json:"tokens_text"` // usage.FormatTokens(Tokens), cache reads included
 	CostText   string  `json:"cost_text"`   // "$1.20", or "≥ $1.20" when Partial
+	// CacheReadText is usage.FormatTokens(CacheRead), so the page can state how
+	// much of the total is cache reads; empty when there are none.
+	CacheReadText string `json:"cache_read_text,omitempty"`
 	// Unpriced names the models without a price (sorted); set with Partial.
 	Unpriced []string `json:"unpriced,omitempty"`
 	// Empty is true when the bucket counts nothing; the page shows dashes.
@@ -33,12 +37,15 @@ type UsageFigure struct {
 
 func figure(b usage.Bucket) UsageFigure {
 	f := UsageFigure{Tokens: b.Tokens.Total(), Output: b.Tokens.Output, CostUSD: b.CostUSD,
-		Partial: len(b.Unpriced) > 0, Empty: b.Empty()}
+		CacheRead: b.Tokens.CacheRead, Partial: len(b.Unpriced) > 0, Empty: b.Empty()}
 	if f.Empty {
 		f.TokensText, f.CostText = noValue, noValue
 		return f
 	}
 	f.TokensText = usage.FormatTokens(f.Tokens)
+	if f.CacheRead > 0 {
+		f.CacheReadText = usage.FormatTokens(f.CacheRead)
+	}
 	f.CostText = costText(b)
 	if f.Partial {
 		f.Unpriced = append([]string{}, b.Unpriced...)

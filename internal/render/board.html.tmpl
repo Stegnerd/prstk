@@ -252,21 +252,25 @@ window.PRSTK = {{.Config}};
   // ---- usage (numbers arrive formatted from the Go side; see render/usage.go) ----
 
   const unpricedTip = (f) => (f.unpriced && f.unpriced.length ? `No price for ${f.unpriced.join(", ")}; the cost leaves them out.` : null);
-  // fig: "17.6M ($29.70)", dashes for an empty bucket; a partial cost carries a tooltip.
-  const usageFig = (f) => f.empty ? "—" : [f.tokens_text, " (", h("span", { class: f.partial ? "tip" : null, title: unpricedTip(f) }, f.cost_text), ")"];
+  // Totals keep cache reads and state them inline: "17.6M (17.1M cached)".
+  const tokensCached = (f, word) => f.tokens_text + (f.cache_read_text ? ` (${f.cache_read_text} ${word})` : "");
+  // fig: "17.6M (17.1M cached, $29.70)", dashes for an empty bucket; a partial cost carries a tooltip.
+  const usageFig = (f) => f.empty ? "—" : [f.tokens_text, " (", f.cache_read_text ? f.cache_read_text + " cached, " : "",
+    h("span", { class: f.partial ? "tip" : null, title: unpricedTip(f) }, f.cost_text), ")"];
 
   function usageStrip(u) {
     const t = u.total;
     const part = (label, f) => [h("span", { class: "sep" }, "·"), h("span", null, label + " ", usageFig(f))];
     return h("div", { class: "ustrip", id: "usage" },
-      h("span", null, "Tokens ", h("b", null, t.tokens_text), " ", h("span", { class: "sep" }, "·"), " ",
+      h("span", null, h("b", null, t.tokens_text), " tokens ", t.cache_read_text ? `(${t.cache_read_text} cache reads) ` : "",
+        h("span", { class: "sep" }, "·"), " ",
         h("b", { class: t.partial ? "tip" : null, title: unpricedTip(t) }, t.cost_text), " est.",
         t.partial ? " (partial)" : null),
       h("span", { class: "sep" }, "—"),
       h("span", null, "director ", usageFig(u.director)),
       part("workers", u.workers),
       u.overhead.empty ? null : [h("span", { class: "sep" }, "·"),
-        h("span", { title: "Director usage not attributed to a PR (planning, other subagents); included in director" }, "overhead " + u.overhead.tokens_text)],
+        h("span", { title: "Director usage not attributed to a PR (planning, other subagents); included in director" }, "overhead " + tokensCached(u.overhead, "cached"))],
       u.warnings ? h("span", { class: "sep" }, "·") : null,
       u.warnings ? h("span", { title: "Usage collection logged warnings; see .prstk.log" }, `${u.warnings} warning${u.warnings === 1 ? "" : "s"}`) : null,
       h("span", { class: "upd", title: "usage.json refreshes when a prstk command runs; it is not live" }, "updated ", since(u.updated_at), " ago"));
@@ -275,8 +279,9 @@ window.PRSTK = {{.Config}};
   function usageBadge(u) {
     if (!u) return null;
     const t = u.total;
-    const split = `director ${u.director.empty ? "—" : u.director.tokens_text + " (" + u.director.cost_text + ")"} · workers ${u.workers.empty ? "—" : u.workers.tokens_text + " (" + u.workers.cost_text + ")"}`;
-    return h("span", { class: "badge ubadge", title: "tokens · est. cost — " + split }, `${t.tokens_text} · ${t.cost_text}`);
+    const side = (f) => f.empty ? "—" : tokensCached(f, "cache reads") + " (" + f.cost_text + ")";
+    const split = `director ${side(u.director)} · workers ${side(u.workers)}`;
+    return h("span", { class: "badge ubadge", title: "tokens (cache reads) · est. cost — " + split }, `${tokensCached(t, "cached")} · ${t.cost_text}`);
   }
 
   function usageSec(u) {
