@@ -11,6 +11,7 @@ import (
 	"github.com/Stegnerd/prstk/internal/gh"
 	"github.com/Stegnerd/prstk/internal/plan"
 	"github.com/Stegnerd/prstk/internal/render"
+	"github.com/Stegnerd/prstk/internal/usage"
 )
 
 // repoPath is where repo-level git commands run (worktree add/remove).
@@ -172,9 +173,50 @@ func (a *App) runSetup(in *plan.Initiative, dir, script string) error {
 	return nil
 }
 
-// updateStackNav rewrites the stack-nav block in every open PR whose body
-// changed. Returns the PR numbers touched.
+// usageSnapshot refreshes usage.json and returns it for the PR-body usage
+// blocks, so a body built inside a command isn't one command behind: mutateDir
+// only regenerates (and so refreshes usage.json) after the command's fn.
+// Returns nil when publishing is off or there is nothing readable.
+func (a *App) usageSnapshot(in *plan.Initiative) *usage.Report {
+	if !in.Config.PublishUsage() {
+		return nil
+	}
+	a.refreshUsage(in, a.Now())
+	r, err := usage.Load(in.UsagePath())
+	if err != nil {
+		in.Verbose("usage: %v (no usage block this time)", err)
+		return nil
+	}
+	return r
+}
+
+// usageBlockFor is the usage block content for PR id, "" when there is none.
+func usageBlockFor(rep *usage.Report, id string) string {
+	if rep == nil {
+		return ""
+	}
+	return render.UsageBlock(rep.PRs[id], rep.UpdatedAt.Local())
+}
+
+// syncBody replaces the stack-nav and usage blocks in a PR body, leaving
+// everything outside the markers alone. With usage_publish off the usage
+// block is removed; with no usage (yet) the previous block is left.
+func syncBody(in *plan.Initiative, id, body string, rep *usage.Report) string {
+	body = render.ReplaceBlock(body, render.StackBegin, render.StackEnd, render.StackNav(in, id))
+	if !in.Config.PublishUsage() {
+		return render.RemoveBlock(body, render.UsageBegin, render.UsageEnd)
+	}
+	if blk := usageBlockFor(rep, id); blk != "" {
+		body = render.ReplaceBlock(body, render.UsageBegin, render.UsageEnd, blk)
+	}
+	return body
+}
+
+// updateStackNav rewrites the stack-nav and usage blocks in every open PR
+// whose body changed, in one EditBody call per PR. Returns the PR numbers
+// touched.
 func (a *App) updateStackNav(in *plan.Initiative) ([]int, error) {
+	rep := a.usageSnapshot(in)
 	var touched []int
 	var errs []string
 	for _, q := range in.PRs {
@@ -189,7 +231,7 @@ func (a *App) updateStackNav(in *plan.Initiative) ([]int, error) {
 		if info.State != "OPEN" {
 			continue
 		}
-		body := render.ReplaceBlock(info.Body, render.StackBegin, render.StackEnd, render.StackNav(in, q.ID))
+		body := syncBody(in, q.ID, info.Body, rep)
 		if body == info.Body {
 			continue
 		}
@@ -244,7 +286,7 @@ func cmdOpen(a *App, id string, skipEvidence *string) error {
 				if line := evidenceDescriptionLine(p); line != "" {
 					desc = strings.TrimSpace(desc + "\n\n" + line)
 				}
-				n, err = a.GH.CreatePR(repo, ghCreate(base, p, render.PRBody(desc, render.StackNav(in, id))))
+				n, err = a.GH.CreatePR(repo, ghCreate(base, p, render.PRBody(desc, render.StackNav(in, id), usageBlockFor(a.usageSnapshot(in), id))))
 				if err != nil {
 					return "", err
 				}
@@ -326,6 +368,11 @@ func cmdReady(a *App, id string, skipEvidence *string, noPublish bool) error {
 			return "", err
 		}
 		msg := fmt.Sprintf("%s #%d ready for review · awaiting-you · released %s", id, p.PRNumber, orDash(worker)) + published
+		// Refresh the nav and usage blocks with the worker's final numbers.
+		// Best effort: ready has already happened, so a gh failure is a warning.
+		if _, err := a.updateStackNav(in); err != nil {
+			msg += " · ⚠ " + err.Error()
+		}
 		if worker != "" {
 			msg += fmt.Sprintf(" · stop teammate %s now (TaskStop)", worker)
 		}

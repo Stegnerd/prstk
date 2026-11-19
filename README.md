@@ -112,12 +112,15 @@ default_base: develop       # base branch when init has no --base
 max_workers: 2              # parallel worker slots
 setup: "test -f go.mod && go mod download || true"   # run in each new worktree
 reviewer: <your name>       # name in the "## Review: <name>" heading; default "Human"
+usage_publish: true         # false: no token-usage block in PR bodies (e.g. a public repo)
 check:                      # what `prstk check` runs; default for Go repos:
   - go vet ./...            #   go vet, gofmt -l, go test
   - go test ./...
 ```
 
 `check` lists the shell commands the director's `prstk check` runs on each finished PR. Leave it out in a Go repo to get `go vet ./...`, a `gofmt -l` check and `go test ./...`.
+
+Each PR body carries a collapsed token-usage block (director vs. worker tokens and estimated cost) after the stack navigation, refreshed whenever prstk edits the body. Set `usage_publish: false` to keep it out of a public repo; the next body update removes an existing one. Pricing is an estimate from Claude Code transcripts.
 
 `reviewer` is the name of the human who reviews and merges. The director copies your feedback word for word into a `## Review: <name>` section of the PR's spec, using this name. If you leave it out, the heading is `## Review: Human`. Specs written earlier with another name (for example `## Review: Dalton`) keep working.
 
