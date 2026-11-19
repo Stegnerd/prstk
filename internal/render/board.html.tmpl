@@ -126,6 +126,24 @@ details.sec > .body { padding: 0 14px 12px; }
 .ev-old { margin-top: 6px; }
 .ev-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 8px; }
 .ev-head a { color: var(--accent); text-decoration: none; }
+.ustrip { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; margin: 0 0 12px; padding: 7px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); }
+.ustrip b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ustrip .sep { opacity: .6; }
+.ustrip .tip { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
+.ustrip .upd { margin-left: auto; }
+.badge.ubadge { background: transparent; color: var(--muted); border: 1px solid var(--line); line-height: 14px;
+  font-variant-numeric: tabular-nums; cursor: help; }
+.utable-wrap { overflow-x: auto; }
+table.utable { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+table.utable th, table.utable td { padding: 4px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.utable th:first-child, table.utable td:first-child { text-align: left; }
+table.utable th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+table.utable td:first-child { font-family: ui-monospace, Menlo, monospace; }
+table.utable tr.total td { font-weight: 600; border-bottom: 0; }
+table.utable tr.empty td { color: var(--muted); }
+table.utable.models { width: auto; margin-top: 10px; }
+.unote { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -231,6 +249,57 @@ window.PRSTK = {{.Config}};
     return h("div", { class: "thumbs" }, b ? img(b, "before") : null, b && a ? h("span", { class: "arrow" }, "→") : null, a ? img(a, "after") : null);
   }
 
+  // ---- usage (numbers arrive formatted from the Go side; see render/usage.go) ----
+
+  const unpricedTip = (f) => (f.unpriced && f.unpriced.length ? `No price for ${f.unpriced.join(", ")}; the cost leaves them out.` : null);
+  // fig: "17.6M ($29.70)", dashes for an empty bucket; a partial cost carries a tooltip.
+  const usageFig = (f) => f.empty ? "—" : [f.tokens_text, " (", h("span", { class: f.partial ? "tip" : null, title: unpricedTip(f) }, f.cost_text), ")"];
+
+  function usageStrip(u) {
+    const t = u.total;
+    const part = (label, f) => [h("span", { class: "sep" }, "·"), h("span", null, label + " ", usageFig(f))];
+    return h("div", { class: "ustrip", id: "usage" },
+      h("span", null, "Tokens ", h("b", null, t.tokens_text), " ", h("span", { class: "sep" }, "·"), " ",
+        h("b", { class: t.partial ? "tip" : null, title: unpricedTip(t) }, t.cost_text), " est.",
+        t.partial ? " (partial)" : null),
+      h("span", { class: "sep" }, "—"),
+      h("span", null, "director ", usageFig(u.director)),
+      part("workers", u.workers),
+      u.overhead.empty ? null : [h("span", { class: "sep" }, "·"),
+        h("span", { title: "Director usage not attributed to a PR (planning, other subagents); included in director" }, "overhead " + u.overhead.tokens_text)],
+      u.warnings ? h("span", { class: "sep" }, "·") : null,
+      u.warnings ? h("span", { title: "Usage collection logged warnings; see .prstk.log" }, `${u.warnings} warning${u.warnings === 1 ? "" : "s"}`) : null,
+      h("span", { class: "upd", title: "usage.json refreshes when a prstk command runs; it is not live" }, "updated ", since(u.updated_at), " ago"));
+  }
+
+  function usageBadge(u) {
+    if (!u) return null;
+    const t = u.total;
+    const split = `director ${u.director.empty ? "—" : u.director.tokens_text + " (" + u.director.cost_text + ")"} · workers ${u.workers.empty ? "—" : u.workers.tokens_text + " (" + u.workers.cost_text + ")"}`;
+    return h("span", { class: "badge ubadge", title: "tokens · est. cost — " + split }, `${t.tokens_text} · ${t.cost_text}`);
+  }
+
+  function usageSec(u) {
+    const rows = u.rows.map((r) => h("tr", { class: r.kind === "total" ? "total" : r.empty ? "empty" : null },
+      h("td", null, r.label), h("td", null, r.input), h("td", null, r.cache_write), h("td", null, r.cache_read),
+      h("td", null, r.output), h("td", null, r.total),
+      h("td", { title: r.partial ? "Includes only priced models" : null }, r.cost)));
+    const models = u.models.map((m) => h("tr", { class: m.unpriced ? "empty" : null },
+      h("td", null, m.model), h("td", null, m.total), h("td", null, m.output),
+      h("td", null, m.unpriced ? "no price" : "")));
+    return sec("usage", "Usage",
+      h("div", { class: "utable-wrap" },
+        h("table", { class: "utable" },
+          h("thead", null, h("tr", null, ["", "Input", "Cache write", "Cache read", "Output", "Total", "Est. cost"].map((x) => h("th", null, x)))),
+          h("tbody", null, rows))),
+      u.models.length ? h("div", { class: "utable-wrap" },
+        h("table", { class: "utable models" },
+          h("thead", null, h("tr", null, ["Model", "Total", "Output", ""].map((x) => h("th", null, x)))),
+          h("tbody", null, models))) : null,
+      u.unpriced && u.unpriced.length ? h("p", { class: "unote" }, `No price for ${u.unpriced.join(", ")}: its tokens are counted, but the cost is a lower bound (≥).`) : null,
+      h("p", { class: "unote" }, "Estimated from Claude Code transcripts; director tokens are attributed to a PR by the prstk commands that named it. Updated ", since(u.updated_at), " ago."));
+  }
+
   function card(c, next) {
     const url = prURL(c.id);
     return h("div", {
@@ -248,6 +317,7 @@ window.PRSTK = {{.Config}};
         c.tag && !c.blocked ? h("span", { class: "badge tag", title: c.reason }, c.tag) : null,
         c.merge_after && c.column === "Awaiting You" ? h("span", { class: "badge tag", title: "merging this first would land it in the parent's branch, not the base branch" }, "merge after " + c.merge_after) : null,
         evBadge(c.evidence),
+        usageBadge(c.usage),
         next.includes(c.id) ? h("span", { class: "badge next" }, "next") : null),
       evThumbs(c.evidence));
   }
@@ -289,7 +359,7 @@ window.PRSTK = {{.Config}};
       const tree = $("#tree");
       const keep = tree && d.mermaid === lastMermaid ? tree : null;
       const slot = h("div", { id: "tree-slot" });
-      $("#main").replaceChildren(slots.length ? h("div", { class: "slots" }, slots) : "", issues || "", h("div", { class: "board-wrap" }, grid),
+      $("#main").replaceChildren(d.usage ? usageStrip(d.usage) : "", slots.length ? h("div", { class: "slots" }, slots) : "", issues || "", h("div", { class: "board-wrap" }, grid),
         h("section", { class: "tree" }, h("h2", null, "Stack tree"), slot));
       if (keep) return slot.replaceWith(keep);
       const div = h("div", { id: "tree" });
@@ -408,6 +478,7 @@ window.PRSTK = {{.Config}};
           : h("p", { class: "muted" }, "No review rounds yet.")),
       sec("reviewer", d.spec.reviewer_name ? `${d.spec.reviewer_name}'s feedback` : "Reviewer feedback", md(d.spec.reviewer)),
       d.evidence ? evidenceSec(d.evidence, prev) : null,
+      d.usage ? usageSec(d.usage) : null,
       sec("notes", "Worker notes (notes.md)", md(d.notes)),
       sec("log", `Log (${d.log.length})`,
         d.log.length ? d.log.map(entry) : h("p", { class: "muted" }, "No log entries mention this PR."),

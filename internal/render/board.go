@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/usage"
 )
 
 var Columns = []string{"Planned", "Ready", "In Progress", "Director Review", "Awaiting You", "Merged"}
@@ -28,6 +29,8 @@ type Board struct {
 	Mermaid    string       `json:"mermaid"`
 	Issues     []plan.Issue `json:"issues"`
 	Next       []string     `json:"next"`
+	// Usage is nil without a usable usage.json (or before anything is counted).
+	Usage *BoardUsage `json:"usage,omitempty"`
 }
 
 type Slot struct {
@@ -60,6 +63,8 @@ type Card struct {
 	MergeAfter string `json:"merge_after,omitempty"`
 	// Evidence is nil when the spec has no evidence level and no captures.
 	Evidence *CardEvidence `json:"evidence,omitempty"`
+	// Usage is nil when the PR has no usage yet.
+	Usage *CardUsage `json:"usage,omitempty"`
 }
 
 func column(in *plan.Initiative, p *plan.Spec) (col, tag string) {
@@ -89,12 +94,12 @@ func column(in *plan.Initiative, p *plan.Spec) (col, tag string) {
 	return "", ""
 }
 
-func buildCard(in *plan.Initiative, p *plan.Spec) Card {
+func buildCard(in *plan.Initiative, p *plan.Spec, rep *usage.Report) Card {
 	col, tag := column(in, p)
 	c := Card{ID: p.ID, Title: p.Title, Parent: p.Parent, Status: DisplayStatus(in, p), Column: col, Tag: tag,
 		PRNumber: p.PRNumber, Opus: p.Model == "opus", Blocked: p.Status == plan.Blocked,
 		Reason: p.BlockedReason, Worker: p.Worker, Since: p.StatusSince, MergeAfter: MergeAfter(in, p),
-		Evidence: buildCardEvidence(p)}
+		Evidence: buildCardEvidence(p), Usage: buildCardUsage(rep, p.ID)}
 	if p.PRNumber > 0 {
 		c.URL = fmt.Sprintf("https://github.com/%s/pull/%d", in.Meta.Repo, p.PRNumber)
 	}
@@ -111,6 +116,8 @@ func BuildBoard(in *plan.Initiative, now time.Time) Board {
 	if b.Issues == nil {
 		b.Issues = []plan.Issue{}
 	}
+	rep := loadUsage(in)
+	b.Usage = buildBoardUsage(rep)
 	for _, p := range in.PRs {
 		if p.Status.HoldsSlot() {
 			b.Slots = append(b.Slots, Slot{Worker: p.Worker, PR: p.ID, Status: string(p.Status), Since: p.StatusSince})
@@ -120,7 +127,7 @@ func BuildBoard(in *plan.Initiative, now time.Time) Board {
 	for _, c := range cands {
 		b.Next = append(b.Next, c.ID)
 	}
-	card := func(p *plan.Spec) Card { return buildCard(in, p) }
+	card := func(p *plan.Spec) Card { return buildCard(in, p, rep) }
 	shown := map[string]bool{}
 	for i, path := range in.Paths() {
 		var lane Lane

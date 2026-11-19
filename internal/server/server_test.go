@@ -89,6 +89,27 @@ func TestAPIAndSSE(t *testing.T) {
 	}
 }
 
+// sseEvents subscribes to /events and returns the data lines.
+func sseEvents(t *testing.T, ctx context.Context, base string) <-chan string {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	got := make(chan string, 4)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			if l, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
+				got <- l
+			}
+		}
+	}()
+	return got
+}
+
 func TestListenPortTaken(t *testing.T) {
 	ln, err := Listen(0)
 	if err != nil {
