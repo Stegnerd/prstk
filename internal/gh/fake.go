@@ -101,6 +101,9 @@ func (f *Fake) View(repo string, n int) (PRInfo, error) {
 func (f *Fake) EditBody(repo string, n int, body string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.fail("EditBody"); err != nil {
+		return err
+	}
 	p, err := f.get(n)
 	if err != nil {
 		return err

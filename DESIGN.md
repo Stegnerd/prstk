@@ -245,6 +245,7 @@ setup: "go mod download"   # run in each new worktree after creation
 reviewer: Ada              # human reviewer's name, used in the "## Review: <name>" heading; default "Human"
 evidence_branch: prstk-evidence  # orphan branch audit evidence is published to (default)
 evidence_publish: true     # false: never publish captures to GitHub (e.g. a public repo)
+usage_publish: true        # false: no token-usage block in PR bodies, and remove an existing one (e.g. a public repo)
 check:                     # shell commands `prstk check` runs, in order
   - go vet ./...
   - go test ./...
@@ -253,6 +254,8 @@ prices:                    # token prices for usage.json, $ per million tokens, 
 ```
 
 `prices` overrides or adds entries of the built-in price table (Anthropic's list as of 2026-10-06: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`). Each entry replaces the whole built-in entry for that key; a model matches the longest key that prefixes its id.
+
+`usage_publish: false` keeps token counts and estimated cost out of PR bodies (see "Usage block" under §8): no block is added, and the next body update removes one that is already there. `usage.json` and the board are unaffected.
 
 `check` is the list of shell commands (run with `sh -c` in the throwaway worktree) that `prstk check` runs. When it's empty and the checked tree has a `go.mod`, the defaults are `go vet ./...`, a `gofmt -l .` check that fails if it prints anything, and `go test ./...`; with no `check:` and no `go.mod`, `prstk check` errors unless `--cmd` is given.
 
@@ -355,9 +358,9 @@ To dogfood a dev build of prstk for one initiative, the human builds it once (`g
 | `prstk spawn-prompt <id> [--worker <name>]` | Prints (read-only, changes no state) the prompt for spawning the PR's worker: teammate name (`--worker`, default the assigned `worker`; errors if neither), agent type `prstk-worker`, model, and the absolute paths of the worktree, spec, notes and the parent's notes, plus branch, PR base and PR number. Adds a paragraph for a fix worker: a merge-conflict fix (`fixing`/`fix-pending` with a `merge conflict` reason), a fix for the reviewer's feedback, or addressing the newest director round (`changes-requested`); and the audit-evidence instructions for an evidence PR. When `PRSTK_BIN` is set in the caller's environment, adds a line telling the worker to run that binary for every prstk command. |
 | `prstk check <id> [--cmd "…"]…` | Verifies a PR the way the director would, changing no plan state and pushing nothing. Needs the branch to exist locally. In a **throwaway** detached worktree (never the worker's own, removed afterwards) it merges the PR's latest base (`origin/<base>` after a fetch, or the parent's branch) with `--no-ff`; a conflict aborts the merge, lists the files and fails. It then runs `config.setup` and each check command (`--cmd`, repeatable, replaces `config.yaml` `check:`; see §4 for the Go defaults), printing `✓`/`✗` with timing and the last 40 lines of a failing command. Warns when the worker's worktree has uncommitted changes (only committed work is checked). Exits 1 if the merge, setup, or any check fails. |
 | `prstk feedback <id> (--from-gh [--author <login>] \| --file <path>)` | Records the human reviewer's feedback **verbatim** under `## Review: <reviewer>` in the spec (§4 `reviewer`) and appends a `feedback` LOG entry. Exactly one of `--from-gh` or `--file` (`--author` only with `--from-gh`). `--file` records chat feedback, stamped `· chat`; an empty file is refused. `--from-gh` needs `pr_number > 0` and imports the PR's reviews, comments and inline comments (with `file:line`) as block quotes with markers, so re-running imports only what is new; it skips prstk's own director reviews, empty comment-only review containers, and, with `--author`, other authors. Prints `no new feedback` when nothing is new. Does not change status; it hints `prstk status <id> fix-pending`. |
-| `prstk open <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. A new PR's description gains a line noting its audit evidence. |
+| `prstk open <id> [--skip-evidence "<reason>"]` | Evidence gate first (see Audit evidence). Pushes branch, creates **draft** PR (`gh pr create --draft --base <parent-branch or base> --body …`) using `notes.md` Description + stack nav block + usage block. Records `pr_number`. Updates stack nav in all open PRs of the initiative. Sets `director-review`. A new PR's description gains a line noting its audit evidence. |
 | `prstk status <id> <status> [--reason "…"]` | Generic transition for statuses without a dedicated command. Validates transition legality. `blocked` requires `--reason`. |
-| `prstk ready <id> [--skip-evidence "<reason>"] [--no-publish]` | Needs `director-review`. Checks, in order: the latest `### Round` under `## Review: Director` is `approved` (refuses on `approved with nits`, `changes requested`, no rounds, or unrecognized text; no bypass); the branch has no commits beyond `origin/<branch>` (else run `prstk open` and re-review); the evidence gate (see Audit evidence; `--skip-evidence` bypasses only this). Then, for a PR with an evidence level and at least one capture, publishes the evidence (`prstk evidence publish`) unless `evidence_publish: false`; a failed publish fails `ready` (re-run it), and `--no-publish` skips it with an `evidence` LOG line. Then `gh pr ready`, sets `awaiting-you`, clears `worker`. |
+| `prstk ready <id> [--skip-evidence "<reason>"] [--no-publish]` | Needs `director-review`. Checks, in order: the latest `### Round` under `## Review: Director` is `approved` (refuses on `approved with nits`, `changes requested`, no rounds, or unrecognized text; no bypass); the branch has no commits beyond `origin/<branch>` (else run `prstk open` and re-review); the evidence gate (see Audit evidence; `--skip-evidence` bypasses only this). Then, for a PR with an evidence level and at least one capture, publishes the evidence (`prstk evidence publish`) unless `evidence_publish: false`; a failed publish fails `ready` (re-run it), and `--no-publish` skips it with an `evidence` LOG line. Then `gh pr ready`, sets `awaiting-you`, clears `worker`, and refreshes the nav and usage blocks in the open PRs' bodies (best effort: a failure is a warning). |
 | `prstk evidence add <id> --phase before\|after --file <path> [--step N] [--caption "…"]` | Copies a capture (image or video) into the PR's `evidence/<phase>/`, records it in `evidence.json` with the worktree HEAD, and logs it. Enforces the before/after timing rules. Prints `<id> <phase> step <n>: <file> (<kind>) @ <short sha>`. |
 | `prstk evidence script <id> --file <path>` | Stores the capture script (`.mjs`, `.js`, `.ts`, `.tape`) in `evidence/script/` and sets it in the manifest, so the after run (and a fix worker) can repeat it. |
 | `prstk evidence publish <id>` | Director only. Needs `pr_number > 0`, an evidence level, at least one capture and `evidence_publish` not false. Commits the current captures to the evidence branch and pushes it (no force; one rebuild on a rejected push), then creates or edits the PR's `<!-- prstk:evidence -->` comment (see Audit evidence). Prints `<id> evidence published to <branch>@<sha> [(unchanged)] · comment <id> created\|updated on #<n>`. |
@@ -384,6 +387,31 @@ To dogfood a dev build of prstk for one initiative, the human builds it once (`g
 - #106 06 middleware
 <!-- prstk:stack:end -->
 ```
+
+### Usage block (in every PR body)
+
+```markdown
+<!-- prstk:usage:begin -->
+<details><summary>Token usage (est.): 3.19M tokens · $5.20</summary>
+
+| | Input | Cache write | Cache read | Output | Est. cost |
+|---|---|---|---|---|---|
+| Director | 40 | 15.0k | 2.00M | 4.0k | $1.50 |
+| Worker w-03 | 60 | 50.0k | 1.00M | 20.0k | $3.60 |
+| **Total** | **110** | **66.0k** | **3.10M** | **24.5k** | **$5.20** |
+
+As of 2026-11-19 16:02. Estimated from Claude Code transcripts; director tokens are attributed by the prstk commands that named this PR.
+</details>
+<!-- prstk:usage:end -->
+```
+
+The block shows one PR's numbers from `usage.json`: the director's rows, one row per worker (fix workers included), and the total. It sits after the stack-nav block, collapsed in a `<details>`. A total with an unpriced model reads `≥ $X (partial)`.
+
+- **When it is written.** Wherever prstk writes or edits a PR body: `open` (creating the PR, and the edit of all open PRs), `ready` (best effort, so the reviewer sees the worker's final numbers), and `merged` (the other open PRs). All go through one path that replaces the nav and usage blocks together in a single `gh pr edit --body`, and make no call when the body is unchanged. Only the text between the markers is replaced; a body without the markers gets the block appended at the end.
+- **Fresh numbers.** `regenerate` refreshes `usage.json` after a command's work, but bodies are built during it. So the body path refreshes `usage.json` itself right before building (the same refresh `regenerate` does, at most once per command) and reads the result. If `usage.json` is unreadable, the previous block is left alone.
+- **Frozen between edits.** prstk makes no extra GitHub calls to refresh it; between body edits the block shows its "As of" time. A merged PR's body is not edited again, so its block keeps the numbers from its last update.
+- **No usage yet.** A PR with no usage gets no block; an existing block is left in place.
+- **`usage_publish: false`.** No block is added, and the next body update of each PR removes an existing one. Turn it off in a public repo. A failed edit is reported like a failed nav edit: `open` and `merged` exit non-zero with the state change already saved, `ready` appends a warning.
 
 ---
 
