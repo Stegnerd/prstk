@@ -316,6 +316,9 @@ type Config struct {
 	// EvidencePublish turns publishing off when false (nil means true), e.g.
 	// for a public repo whose captures mustn't go public.
 	EvidencePublish *bool `yaml:"evidence_publish"`
+	// UsagePublish turns the token-usage block in PR bodies off when false
+	// (nil means true), e.g. for a public repo.
+	UsagePublish *bool `yaml:"usage_publish"`
 	// Prices overrides or adds token prices by model-id prefix, in dollars
 	// per million tokens.
 	Prices map[string]PriceYAML `yaml:"prices"`
@@ -344,6 +347,12 @@ func (c Config) EvidenceBranchName() string {
 // PublishEvidence reports whether evidence publishing is on (the default).
 func (c Config) PublishEvidence() bool {
 	return c.EvidencePublish == nil || *c.EvidencePublish
+}
+
+// PublishUsage reports whether PR bodies carry a token-usage block (the
+// default).
+func (c Config) PublishUsage() bool {
+	return c.UsagePublish == nil || *c.UsagePublish
 }
 
 // DefaultReviewer is the human reviewer's name when config.yaml sets none.

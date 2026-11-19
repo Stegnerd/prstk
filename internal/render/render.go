@@ -4,10 +4,12 @@ package render
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Stegnerd/prstk/internal/plan"
+	"github.com/Stegnerd/prstk/internal/usage"
 )
 
 const (
@@ -15,6 +17,8 @@ const (
 	PlanEnd    = "<!-- prstk:generated:end -->"
 	StackBegin = "<!-- prstk:stack:begin -->"
 	StackEnd   = "<!-- prstk:stack:end -->"
+	UsageBegin = "<!-- prstk:usage:begin -->"
+	UsageEnd   = "<!-- prstk:usage:end -->"
 )
 
 // ReplaceBlock replaces the content between begin/end markers (inclusive of
@@ -214,11 +218,92 @@ func MergeAfter(in *plan.Initiative, p *plan.Spec) string {
 	return par.ID
 }
 
-// PRBody builds a new PR body from the notes Description plus stack nav.
-func PRBody(description, nav string) string {
+// RemoveBlock deletes the begin..end block (markers included) and the blank
+// lines it leaves behind. A doc without the markers is returned unchanged.
+func RemoveBlock(doc, begin, end string) string {
+	i := strings.Index(doc, begin)
+	if i < 0 {
+		return doc
+	}
+	j := strings.Index(doc[i:], end)
+	if j < 0 {
+		return doc
+	}
+	head := strings.TrimRight(doc[:i], "\n")
+	tail := strings.TrimLeft(doc[i+j+len(end):], "\n")
+	switch {
+	case head == "":
+		return tail
+	case tail == "":
+		return head + "\n"
+	}
+	return head + "\n\n" + tail
+}
+
+// PRBody builds a new PR body from the notes Description plus the stack nav
+// and, when usageBlock is not empty, the token-usage block after it.
+func PRBody(description, nav, usageBlock string) string {
 	d := strings.TrimSpace(description)
 	if d == "" {
 		d = "_(no description yet)_"
 	}
-	return ReplaceBlock(d+"\n\n", StackBegin, StackEnd, nav)
+	body := ReplaceBlock(d+"\n\n", StackBegin, StackEnd, nav)
+	if usageBlock != "" {
+		body = ReplaceBlock(body, UsageBegin, UsageEnd, usageBlock)
+	}
+	return body
+}
+
+// usageCost formats a bucket's cost; a bucket with unpriced models shows a
+// lower bound.
+func usageCost(b usage.Bucket, long bool) string {
+	if len(b.Unpriced) == 0 {
+		return usage.FormatUSD(b.CostUSD)
+	}
+	s := "≥ " + usage.FormatUSD(b.CostUSD)
+	if long {
+		s += " (partial)"
+	}
+	return s
+}
+
+// UsageBlock renders the token-usage block content (without markers) for one
+// PR: director and each worker, then the total. updated is the usage.json
+// refresh time shown as "As of".
+func UsageBlock(pr *usage.PRUsage, updated time.Time) string {
+	if pr == nil || pr.Total.Empty() {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<details><summary>Token usage (est.): %s tokens · %s</summary>\n\n",
+		usage.FormatTokens(pr.Total.Tokens.Total()), usageCost(pr.Total, true))
+	b.WriteString("| | Input | Cache write | Cache read | Output | Est. cost |\n|---|---|---|---|---|---|\n")
+	row := func(name string, k usage.Bucket, bold, long bool) {
+		t := k.Tokens
+		cells := []string{name, usage.FormatTokens(t.Input), usage.FormatTokens(t.CacheWrite5m + t.CacheWrite1h),
+			usage.FormatTokens(t.CacheRead), usage.FormatTokens(t.Output), usageCost(k, long)}
+		if bold {
+			for i, c := range cells {
+				cells[i] = "**" + c + "**"
+			}
+		}
+		b.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+	}
+	if !pr.Director.Empty() {
+		row("Director", pr.Director, false, false)
+	}
+	names := make([]string, 0, len(pr.Workers))
+	for n, w := range pr.Workers {
+		if !w.Empty() {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		row("Worker "+esc(n), pr.Workers[n], false, false)
+	}
+	row("Total", pr.Total, true, true)
+	fmt.Fprintf(&b, "\nAs of %s. Estimated from Claude Code transcripts; director tokens are attributed by the prstk commands that named this PR.\n</details>",
+		updated.Format("2006-01-02 15:04"))
+	return b.String()
 }
