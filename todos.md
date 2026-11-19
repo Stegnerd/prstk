@@ -45,3 +45,24 @@ From the todo-followups initiative (2026-11-06, PRs #13–#18).
 ## One-off
 
 - [ ] **First real publish.** #18 has only run against a fake GitHub in tests. On the next evidence PR, check that the `prstk-evidence` branch and the PR comment come out as expected and that the images render.
+
+---
+
+# Follow-ups: token usage
+
+From the token-usage initiative (2026-11-19, PRs #20–#22). That session's director made 88 API calls, with context growing from 43k to 261k tokens: 16.6M processed, of which 65k was output. Cost scales with calls × context size, so the items below cut one or the other.
+
+## Director cost
+
+- [ ] **Stale idle notices cost a full-context turn each.** Seven director turns answered idle notices or repeated "done" messages that needed nothing; at 200k+ context each, that's about 1.5–2M tokens (around 10% of the session). Have workers send exactly one "done" and nothing after it (`agents/prstk-worker.md`). If the harness allows it, mute idle notices from a teammate whose latest "done" is already handled.
+- [ ] **Look things up with a targeted search, not a full load.** Loading the whole `claude-api` skill to get five prices added about 25k tokens that every later call carried (around 2M over the session). In `agents/prstk-director.md`: grep a reference file for the fact you need rather than loading a whole skill or doc. The price table now lives in `internal/usage/price.go`.
+- [ ] **A compact review bundle instead of full diffs.** The director read #20's full core diff (about 700 lines) plus #21 and #22, and in #22's fix round it diffed across a merge, so 03's already-reviewed code came through again. Ideas:
+  - `prstk review <id> --pack` (or a separate command) prints: files changed, the code diff without tests, the worker's "Review first" list from notes.md, and the last `prstk check` result.
+  - For fix rounds and nits, show only the commits since the last approved round, first-parent (no merged-in parent/main code). This pairs with "tie an approval to the commit it approved" above, which records that SHA.
+  - Better still: a reviewer subagent reads the diff in its own throwaway context and returns findings; the director judges them and runs `prstk review`.
+- [ ] **A fresh director between waves.** By the end, every call carried the whole planning conversation (transcript research, spec drafting, the price lookup), none of it needed to review the last PR. Add a `prstk handoff` that writes a short state summary (open PRs, statuses, workers, pending decisions, anything the human said that isn't in LOG.md yet). The director then suggests `/clear` or a new session after planning and after each wave of merges. The plan files already hold the record, and recorded sessions keep `usage.json` continuous across director sessions.
+
+## Token-usage gaps (from #20's review)
+
+- [ ] **`teardown` doesn't record a new director session id.** It doesn't go through `mutateDir`, so if a restarted director's first command is `teardown`, its last turns aren't counted. Record the session in `cmdTeardown` before the final regenerate.
+- [ ] **One director session running two initiatives at once.** A plain `prstk teardown` of the older initiative, run after the newer one was created, ends the newer one's usage window early (`internal/usage/collect.go` `window`: any teardown at or after `created` with no `--initiative` counts). Fix by resolving which initiative each teardown call targeted, e.g. from its tool result ("archived <name> → …") rather than its command line. Rare, so low priority.
