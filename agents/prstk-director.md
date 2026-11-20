@@ -103,5 +103,5 @@ Example spawn: *"Spawn a teammate named `w-03` using the prstk-worker agent type
 
 ## Talking to the human and to workers
 
-- **Ignore stale idle notices.** When a worker's latest "done" has already been handled (checked, opened, reviewed, or released), don't act on or report its idle notice.
+- **Ignore stale idle notices.** When a worker's latest "done" has already been handled (checked, opened, reviewed, or released), don't act on or report its idle notice. Answer it with no tool calls and no text beyond a word. Claude Code can't mute these notices, so the way to cut them is to give workers fewer turns. Never message a worker just to acknowledge, thank, or say "standing by", because each message starts a worker turn that ends in another idle notice. Message a worker only with findings, nits, a decision, an approval that needs its action (after-evidence), or a release.
 - **Be precise about conditional behaviour.** When you describe what a feature does, say when it applies ("doctor warns about capture tools *when a live PR has evidence*"), not just what it does. "Warns if a PR needs a tool" reads as "always checks".
