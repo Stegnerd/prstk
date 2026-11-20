@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +33,9 @@ type App struct {
 	// usage.json is built from live. "" means $CLAUDE_CONFIG_DIR, else
 	// UserHome/.claude.
 	ClaudeDir string
+	// FetchPrices downloads the token price list (see refreshPrices); nil
+	// turns fetching off, as in tests.
+	FetchPrices func(ctx context.Context, url string) ([]byte, error)
 
 	// set per invocation
 	initiativeFlag string
@@ -252,9 +256,9 @@ func (a *App) writeUsage(in *plan.Initiative, now time.Time) error {
 	for i, p := range in.PRs {
 		ids[i] = p.ID
 	}
-	prices := map[string]usage.Price{}
-	for k, v := range in.Config.Prices {
-		prices[k] = usage.Price(v)
+	prices, warnings := a.effectivePrices(in.Config.Prices)
+	for _, w := range warnings {
+		in.Verbose("usage: prices: %s", w)
 	}
 	r := usage.Collect(usage.Input{
 		ClaudeDir: a.claudeDir(), Initiative: in.Name, Created: in.Meta.Created,
@@ -295,5 +299,6 @@ func NewDefault() (*App, error) {
 	return &App{
 		Stdout: os.Stdout, Stderr: os.Stderr, Cwd: cwd, Home: home,
 		Now: time.Now, GH: gh.Exec{}, Getenv: os.Getenv, UserHome: uh,
+		FetchPrices: httpGet,
 	}, nil
 }

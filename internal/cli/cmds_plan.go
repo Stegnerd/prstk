@@ -155,6 +155,9 @@ func cmdInit(a *App, slug, base string) error {
 	if reused {
 		verb = "reused"
 	}
+	// Refresh the token prices before the first usage.json is priced; a
+	// failure only warns.
+	a.refreshPricesQuietly()
 	return a.mutateDir(dir, func(in *plan.Initiative) (string, error) {
 		return fmt.Sprintf("%s %s (base %s) · current", verb, dir, base), nil
 	})

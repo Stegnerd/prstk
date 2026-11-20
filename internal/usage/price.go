@@ -23,26 +23,32 @@ func (p Price) Cost(t Tokens) float64 {
 // Prices maps a model-id prefix to its price.
 type Prices map[string]Price
 
-// DefaultPrices is the built-in price table, from Anthropic's price list as
-// of 2026-10-06. Cache writes are 1.25× input (5-minute TTL) and 2× input
-// (1-hour TTL); cache reads are 0.1× input except where noted.
+// DefaultPrices is the built-in price table, the offline fallback under the
+// fetched table (see PriceFile). From Anthropic's price list as of
+// 2026-10-06, plus claude-fable-5-2 (2026-11-20). Cache writes are 1.25×
+// input (5-minute TTL) and 2× input (1-hour TTL); cache reads are 0.1× input
+// except where noted.
 var DefaultPrices = Prices{
 	"claude-opus-5-5":   {Input: 4.00, CacheWrite5m: 5.00, CacheWrite1h: 8.00, CacheRead: 0.20, Output: 20.00},
 	"claude-sonnet-5-5": {Input: 2.00, CacheWrite5m: 2.50, CacheWrite1h: 4.00, CacheRead: 0.20, Output: 10.00},
 	// The Haiku cache-read price isn't on the list; this assumes the usual 0.1× input.
 	"claude-haiku-5-5": {Input: 0.10, CacheWrite5m: 0.125, CacheWrite1h: 0.20, CacheRead: 0.01, Output: 0.50},
 	"claude-fable-5-1": {Input: 10.00, CacheWrite5m: 12.50, CacheWrite1h: 20.00, CacheRead: 0.25, Output: 50.00},
+	"claude-fable-5-2": {Input: 8.00, CacheWrite5m: 10.00, CacheWrite1h: 16.00, CacheRead: 0.20, Output: 40.00},
 }
 
-// WithOverrides returns the built-in table with overrides replacing or
-// adding entries (config.yaml `prices:`).
-func WithOverrides(overrides map[string]Price) Prices {
+// WithOverrides returns the built-in table with each layer in turn replacing
+// or adding entries, later layers winning: the fetched table, then the
+// global ~/.pr-plans/prices.yaml, then the repo's config.yaml `prices:`.
+func WithOverrides(layers ...map[string]Price) Prices {
 	p := Prices{}
 	for k, v := range DefaultPrices {
 		p[k] = v
 	}
-	for k, v := range overrides {
-		p[k] = v
+	for _, l := range layers {
+		for k, v := range l {
+			p[k] = v
+		}
 	}
 	return p
 }
