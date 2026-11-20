@@ -123,7 +123,7 @@ check:                      # what `prstk check` runs; default for Go repos:
 
 `check` lists the shell commands the director's `prstk check` runs on each finished PR. Leave it out in a Go repo to get `go vet ./...`, a `gofmt -l` check and `go test ./...`.
 
-Each PR body carries a collapsed token-usage block (director vs. worker tokens and estimated cost) after the stack navigation, refreshed whenever prstk edits the body. Set `usage_publish: false` to keep it out of a public repo; the next body update removes an existing one. Pricing is an estimate from Claude Code transcripts.
+Each PR body carries a collapsed token-usage block (director vs. worker tokens and estimated cost) after the stack navigation, refreshed whenever prstk edits the body. Set `usage_publish: false` to keep it out of a public repo; the next body update removes an existing one. Pricing is an estimate from Claude Code transcripts. Prices come from a list `prstk init` fetches into `~/.pr-plans/prices.json` (LiteLLM's model price map), over a built-in fallback, so a new model is priced without a prstk release. Put corrections for every repo in `~/.pr-plans/prices.yaml` (same `prices:` shape as `config.yaml`), or for one repo in its `config.yaml`. `prstk prices` shows the table in use and where each price comes from. Set `PRSTK_PRICES_URL=off` to stop the fetch.
 
 `reviewer` is the name of the human who reviews and merges. The director copies your feedback word for word into a `## Review: <name>` section of the PR's spec, using this name. If you leave it out, the heading is `## Review: Human`. Specs written earlier with another name (for example `## Review: Dalton`) keep working.
 
@@ -307,11 +307,14 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 | `teardown` | Archive the finished initiative |
 | `use <initiative>` | Switch the current initiative |
 | `board [--serve] [--port]` | Write board.html, or serve the live board |
+| `prices [--refresh] [--json]` | Show the token prices in use and where each comes from; `--refresh` fetches the list first |
 
 ### Where things live
 
 ```text
 ~/.pr-plans/
+  prices.json                       # token prices fetched by prstk init (prstk's; safe to delete)
+  prices.yaml                       # optional: your price overrides for every repo
   <owner>-<repo>/
     config.yaml                     # optional per-repo config
     current                         # name of the current initiative

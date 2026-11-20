@@ -381,3 +381,32 @@ func LoadConfig(repoDir string) (Config, error) {
 	}
 	return c, nil
 }
+
+// GlobalPrices is ~/.pr-plans/prices.yaml: hand-written price overrides for
+// every repo, in the same shape as config.yaml `prices:`. They sit above the
+// fetched prices.json and below a repo's config.yaml.
+type GlobalPrices struct {
+	Prices map[string]PriceYAML `yaml:"prices"`
+}
+
+// GlobalPricesPath is the hand-edited global price overrides file.
+func GlobalPricesPath(home string) string { return filepath.Join(home, "prices.yaml") }
+
+// FetchedPricesPath is where prstk caches the fetched price list.
+func FetchedPricesPath(home string) string { return filepath.Join(home, "prices.json") }
+
+// LoadGlobalPrices reads prices.yaml; a missing file is no overrides.
+func LoadGlobalPrices(home string) (map[string]PriceYAML, error) {
+	data, err := os.ReadFile(GlobalPricesPath(home))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var g GlobalPrices
+	if err := yaml.Unmarshal(data, &g); err != nil {
+		return nil, fmt.Errorf("prices.yaml: %w", err)
+	}
+	return g.Prices, nil
+}

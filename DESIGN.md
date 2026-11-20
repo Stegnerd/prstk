@@ -218,7 +218,7 @@ Token usage for the initiative, split between the director and the workers, per 
 
 **Attribution.** Workers map to PRs through LOG.md `assign` entries; a name assigned more than once goes, per message, to the PR whose assign of it most recently precedes the message. Director tokens are split by a heuristic: walking the director's messages in time order, tokens pile up until a message runs a prstk command through Bash. A per-PR command (`assign check open review status ready feedback propagate merged show spawn-prompt <id>`, or `evidence <sub> <id>`, with an id of this initiative) sends them to that PR (split evenly between distinct ids); any other prstk command sends them to **overhead**; what is left at the end is overhead. Only prstk in command position counts (`prstk`, a path to `prstk`/`prstk-*`, or `$PRSTK_BIN`, after any `VAR=value`), so `gh pr diff 03` or `cat prs/03-…` don't.
 
-**Cost.** Dollars from a built-in price table (per million tokens, matched by the longest model-id prefix; `config.yaml` `prices:` overrides or adds entries). A model with no price still counts in tokens, is listed in the bucket's `unpriced`, and its cost is left out, so renderers show the cost as partial rather than guess. Costs are estimates; subscription plans aren't billed per token.
+**Cost.** Dollars per million tokens, matched by the longest model-id prefix, from four layers where each later one replaces or adds entries: the built-in table (the offline fallback), the fetched `~/.pr-plans/prices.json`, the hand-written `~/.pr-plans/prices.yaml`, and the repo's `config.yaml` `prices:` (see "Token prices" below). A model with no price still counts in tokens, is listed in the bucket's `unpriced`, and its cost is left out, so renderers show the cost as partial rather than guess. Costs are estimates; subscription plans aren't billed per token.
 
 **Snapshot.** Claude Code deletes old transcripts, so the file keeps each source file's attributed contribution (`sources`: path, size, mtime, a context fingerprint, teardown calls, contributions). A refresh re-parses a source whose size, mtime or context changed, keeps the stored contribution of one that disappeared (`missing: true`), and re-derives every total. Unchanged files aren't re-read.
 
@@ -253,7 +253,18 @@ prices:                    # token prices for usage.json, $ per million tokens, 
   claude-opus-5-5: {input: 4, cache_write_5m: 5, cache_write_1h: 8, cache_read: 0.2, output: 20}
 ```
 
-`prices` overrides or adds entries of the built-in price table (Anthropic's list as of 2026-10-06: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`). Each entry replaces the whole built-in entry for that key; a model matches the longest key that prefixes its id.
+`prices` is the top price layer, for this repo only. Each entry replaces the whole entry for that key in the layers below; a model matches the longest key that prefixes its id.
+
+### Token prices (global, in the plans root)
+
+So that a new model gets a price without a prstk release, prices come in layers, lowest first:
+
+1. **Built-in table** (`internal/usage/price.go`): the offline fallback.
+2. **`~/.pr-plans/prices.json`**: the Anthropic API's `claude-…` prices from LiteLLM's model price map (`$PRSTK_PRICES_URL` overrides the URL, and `off` turns fetching off). Bedrock, Vertex and Azure entries are skipped. An entry missing cache prices gets the usual multipliers of its input price (1.25× for a 5-minute write, 2× for a 1-hour write, 0.1× for a read). `prstk init` refreshes it on every call, with a 10-second timeout. A failed fetch, or a list with no usable Claude price, keeps the old file and prints one warning line to stderr, and init never fails because of it. `prstk prices --refresh` fetches on demand and does fail on an error. The file is prstk's: never edit it, and deleting it is always safe.
+3. **`~/.pr-plans/prices.yaml`**: hand-written overrides for every repo, in the same shape as `config.yaml` (`prices:` → model → the five prices). Use it when the fetched list is wrong or late.
+4. **The repo's `config.yaml` `prices:`**.
+
+A file that can't be read or parsed is skipped, with a warning in `.prstk.log` (and in `prstk prices`); the remaining layers still apply. `prstk prices [--json]` prints the effective table with each entry's source (`built-in`, `fetched`, `prices.yaml` or `config.yaml`) and when the list was last fetched. It works from any repo, so it's where the director looks a price up. The board's scans of the plans root skip these files, because they only read directories.
 
 `usage_publish: false` keeps token counts and estimated cost out of PR bodies (see "Usage block" under §8): no block is added, and the next body update removes one that is already there. `usage.json` and the board are unaffected.
 
@@ -348,7 +359,8 @@ To dogfood a dev build of prstk for one initiative, the human builds it once (`g
 
 | Command | Behavior |
 |---|---|
-| `prstk init <slug> [--base <branch>]` | Creates initiative dir, PLAN.md skeleton, LOG.md; sets `current`. Base defaults to `config.default_base`, then `develop`. Fails if base branch doesn't exist on the remote. |
+| `prstk init <slug> [--base <branch>]` | Creates initiative dir, PLAN.md skeleton, LOG.md; sets `current`. Base defaults to `config.default_base`, then `develop`. Fails if base branch doesn't exist on the remote. Refreshes `~/.pr-plans/prices.json` (best effort: a failure warns and keeps the old file; see "Token prices"). |
+| `prstk prices [--refresh] [--json]` | The effective token price table, $ per million tokens, with each entry's source (`built-in`, `fetched`, `prices.yaml`, `config.yaml`) and when the list was fetched. `--refresh` fetches first and fails on an error (the old file is kept). Read-only otherwise; works outside an initiative. |
 | `prstk use <initiative>` | Sets `current`. |
 | `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <id,…>] [--early-start] [--evidence screenshots\|video]` | Creates `prs/<id>-<slug>/spec.md` (frontmatter + empty body sections) and empty `notes.md`. Sets `branch`. Adds symmetric `conflicts_with`. `--early-start` sets `early_start`, allowing the PR to be scheduled before its parent passes director review. `--evidence` sets the spec's `evidence` level and seeds an `## Evidence` section (a placeholder, so `validate` warns until it's filled in); on an existing PR it only sets the level. |
 | `prstk validate` | Runs §9 checks, regenerates PLAN.md block + `board.html`. |

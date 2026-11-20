@@ -220,6 +220,13 @@ func (a *App) rootCmd() *cobra.Command {
 	c.Flags().BoolVar(&setup.force, "force", false, "replace agent files that setup didn't write, and symlinks")
 	c.Flags().StringVar(&setup.agentsDir, "agents-dir", "", "install into `dir` (default ~/.claude/agents)")
 
+	var refreshPrices bool
+	c = cmd("prices", "Show the token prices usage.json is priced with, and where each comes from", 0, func([]string) error {
+		return cmdPrices(a, refreshPrices)
+	})
+	c.Flags().BoolVar(&refreshPrices, "refresh", false, "fetch the price list first ($PRSTK_PRICES_URL, default LiteLLM's)")
+	jsonFlag(c)
+
 	cmd("doctor", "Check git, gh, auth, base branch, and the agent-teams flag", 0, func([]string) error {
 		return cmdDoctor(a)
 	})
