@@ -78,6 +78,9 @@ func cmdSetup(a *App, o setupOpts) error {
 	if !a.setupConfig() {
 		bad++
 	}
+	if !a.setupClearHook() {
+		bad++
+	}
 
 	if _, err := a.resolve(); err == nil {
 		a.out("⚠ initiative  this repo has an active initiative: a running director and its workers keep their already-loaded agent definitions until their next session")
