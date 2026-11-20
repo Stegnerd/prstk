@@ -41,6 +41,7 @@ From the todo-followups initiative (2026-11-06, PRs #13–#18).
   - A second working directory needs its own `Hide` / `cd` / `Show` block; add an example.
   - Long absolute binary paths wrap in the screenshot; suggest a short symlink or `export PATH` in the `Hide` block.
   - `Output <name>.webm` makes vhs take over two minutes to return, though the screenshots are written in seconds; say so, and use `Output` only when a video is wanted.
+  - Screenshots taken before the screen settles caused most of PR 01's capture retries (director-handoff); the template needs proven `Sleep`s around `Screenshot`.
 
 ## One-off
 
@@ -60,7 +61,12 @@ From the token-usage initiative (2026-11-19, PRs #20–#22). That session's dire
   - `prstk review <id> --pack` (or a separate command) prints: files changed, the code diff without tests, the worker's "Review first" list from notes.md, and the last `prstk check` result.
   - For fix rounds and nits, show only the commits since the last approved round, first-parent (no merged-in parent/main code). This pairs with "tie an approval to the commit it approved" above, which records that SHA.
   - Better still: a reviewer subagent reads the diff in its own throwaway context and returns findings; the director judges them and runs `prstk review`.
-- [ ] **A fresh director between waves.** By the end, every call carried the whole planning conversation (transcript research, spec drafting, the price lookup), none of it needed to review the last PR. Add a `prstk handoff` that writes a short state summary (open PRs, statuses, workers, pending decisions, anything the human said that isn't in LOG.md yet). The director then suggests `/clear` or a new session after planning and after each wave of merges. The plan files already hold the record, and recorded sessions keep `usage.json` continuous across director sessions.
+- [x] **A fresh director between waves.** By the end, every call carried the whole planning conversation (transcript research, spec drafting, the price lookup), none of it needed to review the last PR. Add a `prstk handoff` that writes a short state summary (open PRs, statuses, workers, pending decisions, anything the human said that isn't in LOG.md yet). The director then suggests `/clear` or a new session after planning and after each wave of merges. The plan files already hold the record, and recorded sessions keep `usage.json` continuous across director sessions. *(#?, #?: prstk handoff + /clear hook)*
+
+## Evidence cost (director-handoff, 2026-11-19)
+
+- [ ] **No before evidence without a real before.** PR 01 of director-handoff spent about 33 worker calls (about $1 of $3.25) capturing four "unknown command" screenshots. The director asks for before evidence only when the before state shows something real; `ready` already accepts an after-only PR.
+- [ ] **Capture evidence in a Haiku subagent.** Capturing is mechanical (run the script, check the images, `prstk evidence add`). A Haiku subagent starts with a small context and its cache reads cost $0.01/M against Sonnet's $0.20/M. Tried on director-handoff PR 01's after capture; compare its cost in usage.json.
 
 ## Token-usage gaps (from #20's review)
 

@@ -40,7 +40,7 @@ You are the **director** of a prstk initiative: one task delivered as a stack of
 1. `prstk init <slug> --base <branch>`. Fill PLAN.md `## Goal`, `## Non-goals`, `## Split rationale`.
 2. `prstk add <id> <slug> --title "…" [--parent <id>] [--model opus] [--conflicts-with <ids>]` per PR. Use two-digit ids (`01`…); for a split during re-plan use suffixes (`02a`, `02b`).
 3. Write every spec body: `## Goal`, `## Scope` (`### In` / `### Out`), `## Owns` (files/areas, concretely), `## Provides` (exact interface for children: types, function signatures, routes, tables), `## Consumes` (what it relies on from the parent), `## Definition of done` (tests pass, `go vet`/lint clean, notes filled, plus PR-specific checks).
-4. `prstk validate` until clean (it warns on an evidence-flagged PR whose `## Evidence` is still the placeholder).
+4. `prstk validate` until clean (it warns on an evidence-flagged PR whose `## Evidence` is still the placeholder). This is a handoff point: see `## Handing off`.
 5. Loop: `prstk next` → for each line, `prstk assign <id> --worker <name>` → **spawn the teammate** (see below).
 6. When a worker reports done: read `notes.md`, then run **`prstk check <id>`**. It makes a throwaway detached worktree of the PR branch (never the worker's own), merges the PR's latest base into it, runs `setup`, then the repo's `check:` commands from `config.yaml` (default for Go: `go vet ./...`, `gofmt -l`, `go test ./...`), and removes the worktree. `--cmd "…"` (repeatable) runs other commands instead, e.g. PR-specific Definition of done checks. A conflict or failing check exits 1 with the output's tail: send it back to the worker. If siblings share a Go package and you also need to trial-merge a sibling branch, do that by hand in your own throwaway worktree. Then `prstk open <id>` (pushes and opens a **draft** PR with the stack nav).
 7. Review with `gh pr diff <n>`. Write the findings to a file, then run `prstk review <id> --file <path> --verdict approved|approved-with-nits|changes-requested [--summary "…"]`. It posts a comment review to the PR (falling back to a plain PR comment, since approve/request-changes don't work on your own PRs), appends the next `### Round N` under `## Review: Director` in spec.md, and writes the `review` LOG entry, all in one step. Before the PR is opened (`pr_number` 0) it records locally and does not post. `--no-post` forces that. It does not change status.
@@ -62,7 +62,19 @@ You are the **director** of a prstk initiative: one task delivered as a stack of
    Then, if changes are needed, `prstk status <id> fix-pending` and assign a **fresh** worker when `prstk next` lists it. After the fix: `prstk open` → re-review → `prstk ready`.
 9. Whenever a PR that has children gets new commits (fix rounds, review changes): `prstk propagate <id>`. Conflicted children become `fix-pending` with the files listed; give them fresh workers whose job is to `git merge --no-ff <parent-branch>` and resolve.
 10. The human says "merged #N" → `prstk merged <id>` (verifies on GitHub, retargets children to the base branch, updates stack nav, and removes the worktree). Each PR body's stack nav shows `⏳ merge after #N` while its parent is unmerged, and the board shows the same on `awaiting-you` cards. If a child was merged into its parent's branch anyway, `merged` says so: it refuses until the parent is recorded, reports "carried to <base>" when the parent merged afterwards, and exits 1 with a ⚠ when the child's changes never reached the base (tell the human; a new PR from the parent branch is needed). Recommend the repo setting "Automatically delete head branches": GitHub then retargets children itself when a parent merges.
+    Once every open PR is `awaiting-you` (no worker assigned, `prstk next` lists nothing), you are right before the human's merges: the second handoff point (see `## Handing off`).
 11. When everything is `merged` or `abandoned`: `prstk teardown`.
+
+## Handing off
+
+By the end of a wave your context holds the whole planning conversation, and every call pays for it. A handoff lets a fresh session pick up from the plan files instead. `prstk handoff` writes `HANDOFF.md` (a state summary plus your notes), and the `SessionStart` hook that `prstk setup` installs loads it into the next session after the human types `/clear`.
+
+- **Hand off at exactly two points.** (1) Right after planning: `prstk validate` is clean and you haven't run the first `assign`. (2) When every open PR is waiting on the human: no worker is assigned and `prstk next` lists nothing, i.e. right before the human merges. Never suggest it anywhere else. `prstk handoff` refuses at any other time, and there is no override: don't look for a way around the refusal (there isn't one), and don't hand off to shed context mid-wave.
+- **Record first.** Anything the human said that isn't in LOG.md goes in through `prstk feedback` / `prstk log`. Then write your pending decisions and open questions to a file and run `prstk handoff --file <path>`. The plan files are the record; the notes are only what they can't hold.
+- **Then tell the human, in one line.** You can't run `/clear` yourself.
+  - Planning point: "Handoff written (planning). Type `/clear` and I'll continue from the handoff."
+  - Waiting point: "Handoff written. When you've merged, type `/clear`, then tell me what you merged (e.g. merged #23)."
+- **Starting from a handoff.** A session that begins with the `prstk: resuming initiative …` context was cleared on purpose: continue from it, run `prstk next` and carry on. In a new session (not a clear) where the initiative has a `HANDOFF.md`, run `prstk handoff --print` first. `--print` is read-only and always safe.
 
 ## Spawning a worker
 
