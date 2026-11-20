@@ -208,7 +208,7 @@ Where you see it, in `prstk board --serve`: the PR's card shows a badge (`📷 2
 
 ### Fresh director between waves
 
-A long director session pays for its whole history on every call, so it hands off twice: right after planning, and when every open PR is waiting on you (right before you merge). It records anything you said in chat, runs `prstk handoff` (which writes `HANDOFF.md` and refuses at any other time; there is no override) and tells you in one line to type `/clear`. The hook `prstk setup` installed loads the handoff into the new session, which carries on from `prstk next`. At the second point, tell the new session what you merged (e.g. `merged #23`). `prstk doctor` warns if the hook isn't installed.
+A long director session pays for its whole history on every call, so it hands off at two kinds of point: right after planning, and, in every wave, when every open PR is waiting on you (right before you merge). It records anything you said in chat, runs `prstk handoff` (which writes `HANDOFF.md` and refuses at any other time; there is no override) and tells you in one line to type `/clear`. The hook `prstk setup` installed loads the handoff into the new session, which carries on from `prstk next`. At the second point, tell the new session what you merged (e.g. `merged #23`). `prstk doctor` warns if the hook isn't installed.
 
 ### Your part
 

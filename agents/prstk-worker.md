@@ -61,6 +61,10 @@ Write it for a **cold-start successor** who has only spec.md and your notes:
 
 Update it as you go, not only at the end.
 
+## Subagents
+
+If you spawn a subagent (for example to capture evidence), its final report may go to the director's session instead of yours. Don't wait for it: check the outcome yourself (e.g. `prstk evidence ls <id>`, `git status`, the files it should have written) and carry on.
+
 ## Done
 
 Report "done" to the director **only** when every Definition-of-done item is met:
