@@ -89,6 +89,7 @@ func cmdDoctor(a *App) error {
 		failed++
 	}
 	failed += a.doctorAgents()
+	a.doctorClearHook()
 	if failed > 0 {
 		return fmt.Errorf("%d check(s) failed", failed)
 	}

@@ -63,6 +63,7 @@ Make sure `$(go env GOPATH)/bin` is on your PATH.
 
 - installs `prstk-director.md` and `prstk-worker.md` into `~/.claude/agents/`, each with a one-line marker comment after the frontmatter (`--agents-dir <dir>` installs somewhere else);
 - when run inside a git repo with an `origin`, creates that repo's `~/.pr-plans/<owner>-<repo>/config.yaml` with defaults (see step 5). It never overwrites an existing one, even with `--force`; run it from outside a repo and it skips this part;
+- when run inside a git repo, adds a `SessionStart` hook (matcher `clear`) to that repo's `.claude/settings.json` that runs `prstk handoff --hook`, keeping every other setting and never adding it twice; commit the file so the hook is reviewable. A `settings.json` that isn't valid JSON is left untouched and reported;
 - warns, and never edits `~/.claude/settings.json`, if agent teams aren't turned on (step 1);
 - reminds you to start Claude with `claude --add-dir ~/.pr-plans`.
 
@@ -205,6 +206,10 @@ On GitHub: `prstk ready` publishes the captures (`prstk evidence publish <id>`) 
 
 Where you see it, in `prstk board --serve`: the PR's card shows a badge (`📷 2/3` is two of three steps with an after capture, `🎬` when there is video, `📷 needs before` before any capture) and a before-to-after strip of step 1. The PR page has an **Evidence** section with each step's before and after side by side, the commit each was captured at, and earlier captures from past review rounds. After teardown, the same view is in the **Archived** section, because the captures move into `_archive/` with the rest of the initiative.
 
+### Fresh director between waves
+
+A long director session pays for its whole history on every call, so it hands off at two kinds of point: right after planning, and, in every wave, when every open PR is waiting on you (right before you merge). It records anything you said in chat, runs `prstk handoff` (which writes `HANDOFF.md` and refuses at any other time; there is no override) and tells you in one line to type `/clear`. The hook `prstk setup` installed loads the handoff into the new session, which carries on from `prstk next`. At the second point, tell the new session what you merged (e.g. `merged #23`). `prstk doctor` warns if the hook isn't installed.
+
 ### Your part
 
 You only ever do three things:
@@ -278,7 +283,8 @@ Decisions such as re-plans, feedback and reviews are recorded with `prstk log <t
 | Command | What it does |
 |---|---|
 | `setup [--link <checkout>] [--force] [--agents-dir <dir>]` | Install the embedded agent definitions into `~/.claude/agents` and, inside a repo, create its `config.yaml` (never overwrites one) |
-| `doctor` | Check git, gh, auth, base branch, agent-teams flag, installed agent definitions (and the capture tools, warning only) |
+| `doctor` | Check git, gh, auth, base branch, agent-teams flag, installed agent definitions (and the capture tools and the `/clear` hook, warning only) |
+| `handoff [--file f] \| --print` | Write `HANDOFF.md`, a state summary for a fresh director session, at the two allowed points: right after planning, and when every open PR is waiting on you (right before you merge). `--print` shows it |
 | `init <slug> --base <b>` | Create an initiative and make it current |
 | `add <id> <slug> --title … [--parent] [--model opus] [--conflicts-with] [--early-start] [--evidence screenshots\|video]` | Add a PR |
 | `validate` | Check the plan; regenerate PLAN.md and board.html |
