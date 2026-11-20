@@ -89,6 +89,8 @@ ls -l ~/.claude/agents/prstk-*.md       # each should show "-> .../prstk/agents/
 
 `prstk doctor` shows `linked to <path>` for a link, and warns when your checkout differs from the installed binary's version (normal while developing).
 
+To upgrade a linked install: `git pull && go install ./cmd/prstk && prstk setup --link <path-to-clone>` (plain `prstk setup` refuses the links).
+
 ### 4. Check the target repo
 
 prstk opens PRs on GitHub against a base branch, so the repo you want to work on needs:
