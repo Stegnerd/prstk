@@ -52,8 +52,13 @@ func TestLogSinceHandoff(t *testing.T) {
 func TestHandoffPoint(t *testing.T) {
 	okIssues := []Issue{{Error: false, Msg: "just a warning"}}
 	errIssues := []Issue{{Error: true, PR: "01", Msg: "broken"}}
-	merged := entry("merged", "merged 01 (#1)")
-	handoff := entry("handoff", "point=merges · 2 open PRs")
+	ready := entry("ready", "01 #1 ready for review")
+	handoff := entry("handoff", "point=waiting · 2 open PRs")
+	child := func(id, parent string, st Status) *Spec {
+		p := pr(id, st, "")
+		p.Parent = parent
+		return p
+	}
 
 	tests := []struct {
 		name   string
@@ -66,7 +71,7 @@ func TestHandoffPoint(t *testing.T) {
 		{name: "planning", in: hoInit(pr("01", Planned, ""), pr("02", Planned, "")), log: []LogEntry{entry("init", "")}, issues: okIssues, want: PointPlanning},
 		{name: "planning twice is fine", in: hoInit(pr("01", Planned, "")), log: []LogEntry{handoff}, want: PointPlanning},
 		{name: "planning with validation errors", in: hoInit(pr("01", Planned, "")), issues: errIssues, errHas: []string{"1 validation error", "prstk validate"}},
-		{name: "planning wins over merges", in: hoInit(pr("01", Planned, "")), log: []LogEntry{merged}, want: PointPlanning},
+		{name: "planning wins over waiting", in: hoInit(pr("01", Planned, "")), log: []LogEntry{ready}, want: PointPlanning},
 		{name: "abandoned is not started", in: hoInit(pr("01", Planned, ""), pr("02", Abandoned, "")), want: PointPlanning},
 
 		{name: "no PRs", in: hoInit(), errHas: []string{"no PRs"}},
@@ -77,20 +82,29 @@ func TestHandoffPoint(t *testing.T) {
 		{name: "fixing", in: hoInit(pr("01", Fixing, "w1")), errHas: []string{"01 (w1, fixing)"}},
 		{name: "slot-holding status without a worker", in: hoInit(pr("01", InProgress, "")), errHas: []string{"01 (no worker recorded, in-progress)"}},
 		{name: "planned with a worker recorded", in: hoInit(pr("01", Planned, "w1")), errHas: []string{"01 (w1, planned)"}},
-		{name: "awaiting-you with a worker recorded", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, "w2")), log: []LogEntry{merged}, errHas: []string{"02 (w2, awaiting-you)"}},
+		{name: "awaiting-you with a worker recorded", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, "w2")), log: []LogEntry{ready}, errHas: []string{"02 (w2, awaiting-you)"}},
 		{name: "every live PR is named", in: hoInit(pr("01", InProgress, "w1"), pr("02", Blocked, "w2")), errHas: []string{"01 (w1, in-progress)", "02 (w2, blocked)"}},
-		{name: "unknown status", in: hoInit(pr("01", Status("bogus"), "")), errHas: []string{"01 (unknown status"}},
-		{name: "a worker left on a merged PR is ignored", in: hoInit(pr("01", Merged, "old"), pr("02", Planned, "")), log: []LogEntry{merged}, want: PointMerges},
+		{name: "unknown status", in: hoInit(pr("01", Status("bogus"), "")), errHas: []string{`01 has an unknown status "bogus"`, "prstk status"}},
+		{name: "a worker left on a merged PR is ignored", in: hoInit(pr("01", Merged, "old"), pr("02", AwaitingYou, "")), log: []LogEntry{ready}, want: PointWaiting},
 
-		{name: "finished", in: hoInit(pr("01", Merged, ""), pr("02", Abandoned, "")), log: []LogEntry{merged}, errHas: []string{"nothing left to hand off", "prstk teardown"}},
-		{name: "finished beats a worker on a done PR", in: hoInit(pr("01", Merged, "w1")), log: []LogEntry{merged}, errHas: []string{"nothing left to hand off"}},
+		{name: "finished", in: hoInit(pr("01", Merged, ""), pr("02", Abandoned, "")), log: []LogEntry{ready}, errHas: []string{"nothing left to hand off", "prstk teardown"}},
+		{name: "finished beats a worker on a done PR", in: hoInit(pr("01", Merged, "w1")), log: []LogEntry{ready}, errHas: []string{"nothing left to hand off"}},
 
-		{name: "merges without an earlier handoff", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, ""), pr("03", Planned, "")), log: []LogEntry{entry("init", ""), merged}, want: PointMerges},
-		{name: "merges after the last handoff", in: hoInit(pr("01", Merged, ""), pr("02", Merged, ""), pr("03", FixPending, "")), log: []LogEntry{merged, handoff, entry("assign", ""), merged}, want: PointMerges},
-		{name: "no merge since the last handoff", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, "")), log: []LogEntry{merged, handoff, entry("ready", "")}, errHas: []string{"no merge since the last handoff", HandoffAllowed}},
-		{name: "started with no merge at all", in: hoInit(pr("01", AwaitingYou, ""), pr("02", Planned, "")), log: []LogEntry{entry("ready", "")}, errHas: []string{HandoffAllowed}},
-		{name: "second handoff after work started", in: hoInit(pr("01", AwaitingYou, "")), log: []LogEntry{handoff, entry("assign", ""), entry("ready", "")}, errHas: []string{"no merge since"}},
-		{name: "merges point ignores validation errors", in: hoInit(pr("01", Merged, ""), pr("02", Planned, "")), log: []LogEntry{merged}, issues: errIssues, want: PointMerges},
+		{name: "waiting without an earlier handoff", in: hoInit(pr("01", AwaitingYou, "")), log: []LogEntry{entry("init", ""), ready}, want: PointWaiting},
+		{name: "waiting with merged and abandoned PRs", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, ""), pr("03", Abandoned, "")), log: []LogEntry{ready}, want: PointWaiting},
+		{name: "waiting with a planned PR that isn't schedulable", in: hoInit(pr("01", AwaitingYou, ""), child("02", "99", Planned)), log: []LogEntry{ready}, want: PointWaiting},
+		{name: "ready after the last handoff", in: hoInit(pr("01", AwaitingYou, ""), pr("02", AwaitingYou, "")), log: []LogEntry{ready, handoff, entry("assign", ""), ready}, want: PointWaiting},
+		{name: "waiting ignores validation errors", in: hoInit(pr("01", AwaitingYou, "")), log: []LogEntry{ready}, issues: errIssues, want: PointWaiting},
+		{name: "waiting ignores a merged entry", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, "")), log: []LogEntry{handoff, entry("merged", "merged 01")}, errHas: []string{"no PR was marked ready since the last handoff"}},
+
+		{name: "fix-pending is schedulable", in: hoInit(pr("01", AwaitingYou, ""), pr("02", FixPending, "")), log: []LogEntry{ready}, errHas: []string{"prstk next lists work (02)", HandoffAllowed}},
+		{name: "a schedulable planned PR is refused", in: hoInit(pr("01", AwaitingYou, ""), pr("02", Planned, "")), log: []LogEntry{ready}, errHas: []string{"prstk next lists work (02)"}},
+		{name: "a planned child of an awaiting-you PR is schedulable", in: hoInit(pr("01", AwaitingYou, ""), child("02", "01", Planned)), log: []LogEntry{ready}, errHas: []string{"prstk next lists work (02)"}},
+		{name: "every listed PR is named", in: hoInit(pr("01", AwaitingYou, ""), pr("02", Planned, ""), pr("03", FixPending, "")), log: []LogEntry{ready}, errHas: []string{"(03, 02)"}},
+		{name: "no PR awaiting you", in: hoInit(pr("01", Merged, ""), child("02", "99", Planned)), log: []LogEntry{ready}, errHas: []string{"no PR is awaiting-you", HandoffAllowed}},
+		{name: "awaiting-you with no ready since the last handoff", in: hoInit(pr("01", Merged, ""), pr("02", AwaitingYou, "")), log: []LogEntry{ready, handoff, entry("merged", "")}, errHas: []string{"no PR was marked ready since the last handoff", HandoffAllowed}},
+		{name: "awaiting-you with no ready at all", in: hoInit(pr("02", AwaitingYou, "")), log: []LogEntry{entry("init", "")}, errHas: []string{"no PR was marked ready"}},
+		{name: "second handoff with nothing new", in: hoInit(pr("01", AwaitingYou, "")), log: []LogEntry{ready, handoff}, errHas: []string{"no PR was marked ready since"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,11 +131,12 @@ func TestHandoffPoint(t *testing.T) {
 }
 
 func TestHandoffPointRefusalsSayWhenAllowed(t *testing.T) {
-	// Every refusal except "finished", "no PRs" and "validation errors" ends
-	// with the allowed-points sentence.
+	// Every refusal except "finished", "no PRs", "unknown status" and
+	// "validation errors" ends with the allowed-points sentence.
 	for _, in := range []*Initiative{
 		hoInit(pr("01", InProgress, "w")),
 		hoInit(pr("01", AwaitingYou, "")),
+		hoInit(pr("01", AwaitingYou, ""), pr("02", FixPending, "")),
 	} {
 		_, err := HandoffPoint(in, nil, nil)
 		if err == nil || !strings.HasSuffix(err.Error(), HandoffAllowed) {

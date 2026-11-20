@@ -33,11 +33,11 @@ func TestHandoffSummary(t *testing.T) {
 	in.PR("06").Status = plan.FixPending
 	in.PR("06").BlockedReason = "needs a rename"
 
-	got := Handoff(in, HandoffOpts{Point: plan.PointMerges, Now: hoNow})
+	got := Handoff(in, HandoffOpts{Point: plan.PointWaiting, Now: hoNow})
 	for _, want := range []string{
 		"# Handoff: 2026-11-03-1415-pokemon-api",
 		"base `develop` · max_workers 2",
-		"- Point: merges · written 2026-11-03 15:00",
+		"- Point: waiting · written 2026-11-03 15:00",
 		"| 02 | db-layer | 01 | awaiting-you (",
 		"| #102 | r2 approved with nits |",
 		"| 03 | read-endpoints | 02 | awaiting-you (",

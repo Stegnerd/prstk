@@ -89,12 +89,13 @@ type HandoffPointKind string
 const (
 	// PointPlanning is right after planning, before the first assign.
 	PointPlanning HandoffPointKind = "planning"
-	// PointMerges is after a wave of merges, with no worker assigned.
-	PointMerges HandoffPointKind = "merges"
+	// PointWaiting is right before the human merges: every open PR waits on
+	// the human, with no worker assigned and nothing left to assign.
+	PointWaiting HandoffPointKind = "waiting"
 )
 
 // HandoffAllowed says when a handoff is allowed. Every refusal ends with it.
-const HandoffAllowed = "handoff is allowed right after planning (before the first assign) or after a wave of merges (no worker assigned)"
+const HandoffAllowed = "handoff is allowed right after planning (before the first assign) or when every open PR is waiting on the human (no worker assigned, nothing to assign)"
 
 // HandoffPoint is the handoff gate. It decides from the PR specs, LOG.md
 // entries and the validation issues whether a handoff may be written now,
@@ -104,23 +105,28 @@ const HandoffAllowed = "handoff is allowed right after planning (before the firs
 //   - refused while any open PR has a worker recorded or a status that holds
 //     a worker slot (the worker field is checked as well as the status, so a
 //     status edited to look idle doesn't open the gate);
+//   - refused for a PR with an unknown status;
 //   - refused when every PR is merged or abandoned (nothing left to hand off);
 //   - PointPlanning: no PR has started and validation has no errors;
-//   - PointMerges: at least one `merged` entry after the latest `handoff`
-//     entry (any `merged` entry when there is no handoff entry yet).
+//   - PointWaiting: at least one PR is awaiting-you, `prstk next` would list
+//     nothing, and a `ready` entry follows the latest `handoff` entry (any
+//     `ready` entry when there is no handoff entry yet).
 //
 // When both could hold, PointPlanning is reported.
 func HandoffPoint(in *Initiative, log []LogEntry, issues []Issue) (HandoffPointKind, error) {
 	if len(in.PRs) == 0 {
 		return "", fmt.Errorf("the plan has no PRs yet; nothing to hand off")
 	}
-	var live []string
-	open := 0
+	var live, unknown []string
+	open, awaiting := 0, 0
 	for _, p := range in.PRs {
 		if p.Status == Merged || p.Status == Abandoned {
 			continue
 		}
 		open++
+		if p.Status == AwaitingYou {
+			awaiting++
+		}
 		switch {
 		case p.Worker != "" || p.Status.HoldsSlot():
 			w := p.Worker
@@ -129,11 +135,14 @@ func HandoffPoint(in *Initiative, log []LogEntry, issues []Issue) (HandoffPointK
 			}
 			live = append(live, fmt.Sprintf("%s (%s, %s)", p.ID, w, p.Status))
 		case !p.Status.Known():
-			live = append(live, fmt.Sprintf("%s (unknown status %q)", p.ID, p.Status))
+			unknown = append(unknown, fmt.Sprintf("%s has an unknown status %q", p.ID, p.Status))
 		}
 	}
 	if len(live) > 0 {
 		return "", fmt.Errorf("refusing: workers are live: %s; %s", strings.Join(live, ", "), HandoffAllowed)
+	}
+	if len(unknown) > 0 {
+		return "", fmt.Errorf("refusing: %s; fix its spec with prstk status", strings.Join(unknown, ", "))
 	}
 	if open == 0 {
 		return "", fmt.Errorf("refusing: every PR is merged or abandoned; nothing left to hand off; run prstk teardown")
@@ -153,13 +162,23 @@ func HandoffPoint(in *Initiative, log []LogEntry, issues []Issue) (HandoffPointK
 		return PointPlanning, nil
 	}
 
+	if cands, _ := in.Next(); len(cands) > 0 {
+		ids := make([]string, len(cands))
+		for i, c := range cands {
+			ids[i] = c.ID
+		}
+		return "", fmt.Errorf("refusing: prstk next lists work (%s), so a handoff would stall it; %s", strings.Join(ids, ", "), HandoffAllowed)
+	}
+	if awaiting == 0 {
+		return "", fmt.Errorf("refusing: no PR is awaiting-you; %s", HandoffAllowed)
+	}
 	last := latestIndex(log, "handoff")
 	for _, e := range log[last+1:] {
-		if e.Type == "merged" {
-			return PointMerges, nil
+		if e.Type == "ready" {
+			return PointWaiting, nil
 		}
 	}
-	return "", fmt.Errorf("refusing: no merge since the last handoff and work has started; %s", HandoffAllowed)
+	return "", fmt.Errorf("refusing: no PR was marked ready since the last handoff; %s", HandoffAllowed)
 }
 
 // OpenPRs counts the PRs that are neither merged nor abandoned.

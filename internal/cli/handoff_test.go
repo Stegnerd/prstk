@@ -27,6 +27,22 @@ func (e *env) markMerged(id string, prNumber int) {
 	}
 }
 
+// markReady puts a PR where `prstk ready` leaves it: awaiting-you, with a PR
+// number, no worker and a `ready` LOG entry.
+func (e *env) markReady(id string, prNumber int) {
+	e.t.Helper()
+	in := e.initiative()
+	p := in.PR(id)
+	p.PRNumber, p.Worker = prNumber, ""
+	p.SetStatus(plan.AwaitingYou, e.now)
+	if err := p.Save(); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := in.AppendLog(e.now, "ready", "#"+id+" ready for review"); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 func (e *env) handoffFile() string { return e.initiative().HandoffPath() }
 
 func (e *env) planned() *env {
@@ -139,30 +155,59 @@ func TestHandoffRefusesWhenValidationFails(t *testing.T) {
 	}
 }
 
-func TestHandoffAfterMerges(t *testing.T) {
-	e := newEnv(t).planned()
-	e.markMerged("01", 101)
+func TestHandoffWhenEveryPRIsWaiting(t *testing.T) {
+	e := newEnv(t)
+	e.run("init", "pokemon-api")
+	e.run("add", "01", "scaffold", "--title", "Scaffold")
+	e.run("add", "02", "db-layer", "--title", "DB layer")
+	e.markReady("01", 101)
+
+	// 02 is still schedulable: prstk next would list it, so the handoff is refused.
+	_, errOut, code := e.try("handoff")
+	if code != 1 || !strings.Contains(errOut, "prstk next lists work (02)") || !strings.Contains(errOut, plan.HandoffAllowed) {
+		t.Fatalf("with work left: exit %d, %s", code, errOut)
+	}
+	if _, err := os.Stat(e.handoffFile()); err == nil {
+		t.Fatal("HANDOFF.md written by a refused handoff")
+	}
+
+	e.markReady("02", 102)
 	out := e.run("handoff")
-	if !strings.Contains(out, "(merges)") {
+	if !strings.Contains(out, "(waiting)") {
 		t.Fatalf("out: %s", out)
 	}
 	md := e.readFile(e.handoffFile())
-	if !strings.Contains(md, "- Point: merges") || !strings.Contains(md, "merged: 01 #101") {
+	if !strings.Contains(md, "- Point: waiting") || !strings.Contains(md, "## Waiting on the human\n\n- 01 #101 Scaffold\n- 02 #102 DB layer\n") {
 		t.Fatalf("HANDOFF.md:\n%s", md)
 	}
-	if !strings.Contains(e.readFile(e.initiative().LogPath()), "point=merges · 5 open PRs") {
-		t.Fatal("LOG lacks the merges handoff entry")
+	if !strings.Contains(e.readFile(e.initiative().LogPath()), "point=waiting · 2 open PRs") {
+		t.Fatal("LOG lacks the waiting handoff entry")
 	}
 
-	// Work started and nothing merged since: refused, whatever the file times say.
-	_, errOut, code := e.try("handoff")
-	if code != 1 || !strings.Contains(errOut, "no merge since the last handoff") || !strings.Contains(errOut, plan.HandoffAllowed) {
+	// Nothing marked ready since: refused, whatever the file times say.
+	_, errOut, code = e.try("handoff")
+	if code != 1 || !strings.Contains(errOut, "no PR was marked ready since the last handoff") || !strings.Contains(errOut, plan.HandoffAllowed) {
 		t.Fatalf("second handoff: exit %d, %s", code, errOut)
 	}
-	// Another merge reopens the gate.
-	e.markMerged("02", 102)
-	if out := e.run("handoff"); !strings.Contains(out, "(merges)") {
-		t.Fatalf("after the next merge: %s", out)
+	// A new PR reaching the human reopens the gate.
+	e.run("add", "03", "more", "--title", "More")
+	e.markReady("03", 103)
+	if out := e.run("handoff"); !strings.Contains(out, "(waiting)") {
+		t.Fatalf("after the next ready: %s", out)
+	}
+}
+
+func TestHandoffRefusesFixPending(t *testing.T) {
+	e := newEnv(t)
+	e.run("init", "pokemon-api")
+	e.run("add", "01", "scaffold", "--title", "Scaffold")
+	e.run("add", "02", "db-layer", "--title", "DB layer")
+	e.markReady("01", 101)
+	e.markReady("02", 102)
+	e.run("status", "02", "fix-pending", "--reason", "needs a rename")
+	_, errOut, code := e.try("handoff")
+	if code != 1 || !strings.Contains(errOut, "prstk next lists work (02)") {
+		t.Fatalf("exit %d: %s", code, errOut)
 	}
 }
 
