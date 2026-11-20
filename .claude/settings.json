@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "\"${PRSTK_BIN:-prstk}\" handoff --hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}
