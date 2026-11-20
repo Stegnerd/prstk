@@ -179,6 +179,7 @@ func (in *Initiative) PlanPath() string    { return filepath.Join(in.Dir, "PLAN.
 func (in *Initiative) LogPath() string     { return filepath.Join(in.Dir, "LOG.md") }
 func (in *Initiative) BoardPath() string   { return filepath.Join(in.Dir, "board.html") }
 func (in *Initiative) UsagePath() string   { return filepath.Join(in.Dir, "usage.json") }
+func (in *Initiative) HandoffPath() string { return filepath.Join(in.Dir, "HANDOFF.md") }
 func (in *Initiative) VerbosePath() string { return filepath.Join(in.Dir, ".prstk.log") }
 func (in *Initiative) LockPath() string    { return filepath.Join(in.Dir, ".lock") }
 func (in *Initiative) PRsDir() string      { return filepath.Join(in.Dir, "prs") }

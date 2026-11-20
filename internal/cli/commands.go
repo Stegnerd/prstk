@@ -129,6 +129,14 @@ func (a *App) rootCmd() *cobra.Command {
 	logCmd.Flags().StringVar(&logFile, "file", "", "read the (multi-line) message from `path`")
 	root.AddCommand(logCmd)
 
+	var ho handoffOpts
+	c = cmd("handoff", "Write HANDOFF.md, a state summary for a fresh director (only at allowed points), or print it", 0, func([]string) error {
+		return cmdHandoff(a, ho)
+	})
+	c.Flags().StringVar(&ho.file, "file", "", "the director's notes `path`, copied into HANDOFF.md")
+	c.Flags().BoolVar(&ho.print, "print", false, "print the live summary and the saved notes; write nothing")
+	c.Flags().BoolVar(&ho.hook, "hook", false, "SessionStart hook: read the hook JSON on stdin, print the summary; always exits 0")
+
 	var rv reviewOpts
 	c = cmd("review <id>", "Post a review to the PR, record it as a numbered round, and log it", 1, func(args []string) error {
 		rv.id = args[0]
