@@ -67,6 +67,7 @@ From the token-usage initiative (2026-11-19, PRs #20–#22). That session's dire
 
 - [ ] **No before evidence without a real before.** PR 01 of director-handoff spent about 33 worker calls (about $1 of $3.25) capturing four "unknown command" screenshots. The director asks for before evidence only when the before state shows something real; `ready` already accepts an after-only PR.
 - [ ] **Capture evidence in a Haiku subagent.** Capturing is mechanical (run the script, check the images, `prstk evidence add`). A Haiku subagent starts with a small context and its cache reads cost $0.01/M against Sonnet's $0.20/M. Tried on director-handoff PR 01's after capture; compare its cost in usage.json.
+- [ ] **usage.json files a worker's subagents under the director.** The Haiku capture agents that w-01 and w-02 spawned are counted as director overhead (`internal/usage/collect.go`). Attribute a subagent to the worker that spawned it, so evidence cost shows up on the PR. Measured by hand: 16 and 22 Haiku calls, about $0.02 each, against about $1 for PR 01's Sonnet before capture.
 
 ## Token-usage gaps (from #20's review)
 
